@@ -28,7 +28,7 @@ test.describe('Form Validation', () => {
     await expect(beanError).toBeVisible()
 
     // Should not navigate away
-    await expect(page).toHaveURL('**/brew/new')
+    await expect(page).toHaveURL(/\/brew\/new$/)
   })
 
   test('should show temperature range error for V60 with invalid temperature', async ({ page }) => {
@@ -38,12 +38,12 @@ test.describe('Form Validation', () => {
     await fillBrewForm(page, testBrewData.invalidTemp)
     await page.click('button:has-text("Log Brew")')
 
-    // Should show temperature range error (90-96°C for V60)
-    const tempError = page.locator('text=/V60.*90.*96|temperature.*90.*96/i')
+    // Should show temperature range error (V60 requires 90-96°C)
+    const tempError = page.locator('text=/V60.*90.*96|75.*outside/i')
     await expect(tempError).toBeVisible()
 
     // Should not navigate away
-    await expect(page).toHaveURL('**/brew/new')
+    await expect(page).toHaveURL(/\/brew\/new$/)
   })
 
   test('should show dose/water ratio error when ratio is outside 10-20x range', async ({ page }) => {
@@ -53,12 +53,12 @@ test.describe('Form Validation', () => {
     await fillBrewForm(page, testBrewData.invalidRatio)
     await page.click('button:has-text("Log Brew")')
 
-    // Should show ratio error (10-20x range)
-    const ratioError = page.locator('text=/ratio|10.*20|dose.*water/i')
+    // Should show ratio error (Water should be 10-20x the dose...)
+    const ratioError = page.locator('text=/10-20x|Water should/i')
     await expect(ratioError).toBeVisible()
 
     // Should not navigate away
-    await expect(page).toHaveURL('**/brew/new')
+    await expect(page).toHaveURL(/\/brew\/new$/)
   })
 
   test('should require notes when rating is below 3', async ({ page }) => {
@@ -68,11 +68,11 @@ test.describe('Form Validation', () => {
     await fillBrewForm(page, testBrewData.lowRatingNoNotes)
     await page.click('button:has-text("Log Brew")')
 
-    // Should show notes required error
-    const notesError = page.locator('text=/notes.*required|low.*rating|must.*provide.*notes/i')
+    // Should show notes required error (Please add notes for low-rated brews...)
+    const notesError = page.locator('text=/add notes.*low-rated/i')
     await expect(notesError).toBeVisible()
 
     // Should not navigate away
-    await expect(page).toHaveURL('**/brew/new')
+    await expect(page).toHaveURL(/\/brew\/new$/)
   })
 })

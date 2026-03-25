@@ -8,7 +8,7 @@ test.describe('Brew Logging', () => {
     await page.click('button:has-text("Log Brew")')
 
     // Should redirect to brews list
-    await page.waitForURL('**/brews')
+    await page.waitForURL(/\/brews$/)
 
     // Newly created brew should appear in table
     const row = page.locator('table tbody tr', { hasText: testBrewData.valid.bean })
@@ -28,7 +28,7 @@ test.describe('Brew Logging', () => {
     await expect(methodError).toBeVisible()
 
     // Should NOT navigate away
-    await expect(page).toHaveURL('**/brew/new')
+    await expect(page).toHaveURL(/\/brew\/new$/)
   })
 
   test('should show validation errors for invalid dose and temp', async ({ page }) => {
@@ -39,10 +39,10 @@ test.describe('Brew Logging', () => {
     await page.click('button:has-text("Log Brew")')
 
     // Both errors should display
-    const doseError = page.locator('text=greater than 0')
-    const tempError = page.locator('text=90-96')
+    const doseError = page.locator('text=/Dose.*greater than 0/i')
+    const tempError = page.locator('text=/V60.*90.*96|75.*outside/i')
     await expect(doseError).toBeVisible()
     await expect(tempError).toBeVisible()
-    await expect(page).toHaveURL('**/brew/new')
+    await expect(page).toHaveURL(/\/brew\/new$/)
   })
 })

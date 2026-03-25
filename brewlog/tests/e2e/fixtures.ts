@@ -2,7 +2,7 @@ import { Page } from '@playwright/test'
 
 export const testBrewData = {
   valid: {
-    bean: 'Ethiopian Yirgacheffe',
+    bean: 'Yirgacheffe Konga',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 18,
@@ -16,7 +16,7 @@ export const testBrewData = {
     notes: 'Great acidity, fruity notes',
   },
   invalidDose: {
-    bean: 'Ethiopian Yirgacheffe',
+    bean: 'Yirgacheffe Konga',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 0, // invalid
@@ -30,7 +30,7 @@ export const testBrewData = {
     notes: '',
   },
   invalidTemp: {
-    bean: 'Ethiopian Yirgacheffe',
+    bean: 'Yirgacheffe Konga',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 18,
@@ -44,7 +44,7 @@ export const testBrewData = {
     notes: '',
   },
   invalidRatio: {
-    bean: 'Ethiopian Yirgacheffe',
+    bean: 'Yirgacheffe Konga',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 30,
@@ -58,7 +58,7 @@ export const testBrewData = {
     notes: '',
   },
   lowRatingNoNotes: {
-    bean: 'Ethiopian Yirgacheffe',
+    bean: 'Yirgacheffe Konga',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 18,
@@ -97,7 +97,7 @@ export async function fillBrewForm(page: Page, brew: typeof testBrewData.valid) 
 export async function navigateToNewBrewForm(page: Page) {
   await page.goto('/')
   await page.click('a:has-text("Log a Brew")')
-  await page.waitForURL('**/brew/new')
+  await page.waitForURL(/\/brew\/new$/)
 }
 
 export async function navigateToBrewList(page: Page) {
