@@ -1,0 +1,10 @@
+Untitled/
+Untitled.zip
+.DS_Store
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+env/
+node_modules/
