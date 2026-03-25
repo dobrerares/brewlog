@@ -46,7 +46,6 @@ test.describe('Browsing Brews', () => {
 
     // If list is empty, should show empty state
     const table = page.locator('table')
-    const tbody = page.locator('table tbody')
 
     // Either table doesn't exist, or tbody is empty
     const rowCount = await page.locator('table tbody tr').count()
