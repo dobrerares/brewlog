@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { testBrewData, fillBrewForm, navigateToNewBrewForm, navigateToBrewList } from './fixtures'
+import { testBrewData, fillBrewForm, navigateToNewBrewForm } from './fixtures'
 
 test.describe('Delete Brew', () => {
   test('should delete a brew and remove from list', async ({ page }) => {
