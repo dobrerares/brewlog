@@ -15,7 +15,6 @@
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             nodejs_24
-            npm
             firefox
             playwright-driver
             # X11 and graphics libraries for Firefox
