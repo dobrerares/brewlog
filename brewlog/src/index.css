@@ -38,6 +38,22 @@
   --font-size: 16px;
 }
 
+[data-theme="dark"] {
+  --background: #1a1612;
+  --foreground: #e8e0d8;
+  --primary-brown: #c4956a;
+  --primary-dark: #e8d0b8;
+  --accent-terracotta: #d4906b;
+  --cream: #2a2420;
+  --text-muted: #a09890;
+  --border-color: #3a3430;
+  --green: #7a9a7a;
+  --yellow: #d4aa4c;
+  --red: #c86c5a;
+  --card: #241e1a;
+  --card-foreground: #e8e0d8;
+}
+
 * {
   box-sizing: border-box;
 }
