@@ -1,6 +1,9 @@
+import { useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router'
 import { ArrowLeft, Trash2, Edit2 } from 'lucide-react'
 import { useBrewCRUD } from '../hooks/useBrewCRUD'
+import { useActivityTracker } from '../hooks/useActivityTracker'
+import { ThemeToggle } from '../components/ThemeToggle'
 import type { BrewLog } from '../data/mockData'
 
 export function BrewDetail() {
@@ -28,6 +31,13 @@ export function BrewDetail() {
   // Type guard for TypeScript
   const b = brew as BrewLog
 
+  const { setLastViewed, trackVisit } = useActivityTracker()
+
+  useEffect(() => {
+    trackVisit(`/brew/${id}`)
+    setLastViewed({ id: id!, bean: b.bean })
+  }, [id])
+
   const handleDelete = () => {
     if (confirm('Delete this brew?')) {
       deleteBrew(id!)
@@ -42,9 +52,12 @@ export function BrewDetail() {
           <Link to="/" style={{ color: 'var(--primary-brown)' }}>
             <h3 className="m-0">BrewLog</h3>
           </Link>
-          <Link to="/brews" style={{ color: 'var(--foreground)' }} className="text-sm hover:opacity-60 transition-opacity">
-            Brews
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link to="/brews" style={{ color: 'var(--foreground)' }} className="text-sm hover:opacity-60 transition-opacity">
+              Brews
+            </Link>
+            <ThemeToggle />
+          </div>
         </div>
       </nav>
 

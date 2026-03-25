@@ -1,11 +1,16 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router'
 import { Plus, Trash2 } from 'lucide-react'
 import { useBrewCRUD } from '../hooks/useBrewCRUD'
 import { useBrewPagination } from '../hooks/useBrewPagination'
+import { useActivityTracker } from '../hooks/useActivityTracker'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 export function BrewList() {
   const { getBrews, deleteBrew } = useBrewCRUD()
   const { currentItems, currentPage, totalPages, nextPage, prevPage } = useBrewPagination(getBrews(), 10)
+  const { trackVisit } = useActivityTracker()
+  useEffect(() => { trackVisit('/brews') }, [])
 
   const handleDelete = (id: string) => {
     if (confirm('Delete this brew log?')) {
@@ -20,9 +25,12 @@ export function BrewList() {
           <Link to="/" style={{ color: 'var(--primary-brown)' }}>
             <h3 className="m-0">BrewLog</h3>
           </Link>
-          <Link to="/" style={{ color: 'var(--foreground)' }} className="text-sm hover:opacity-60 transition-opacity">
-            Home
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link to="/" style={{ color: 'var(--foreground)' }} className="text-sm hover:opacity-60 transition-opacity">
+              Home
+            </Link>
+            <ThemeToggle />
+          </div>
         </div>
       </nav>
 

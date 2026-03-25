@@ -4,6 +4,8 @@ import { ArrowLeft } from 'lucide-react'
 import { beans, methods, grinders, brewers, flavorOptions, tasteOptions } from '../data/mockData'
 import { useBrewValidation } from '../hooks/useBrewValidation'
 import { useBrewCRUD } from '../hooks/useBrewCRUD'
+import { useActivityTracker } from '../hooks/useActivityTracker'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 export function BrewForm() {
   const { id } = useParams()
@@ -11,6 +13,8 @@ export function BrewForm() {
   const isEdit = !!id
   const { validateForm } = useBrewValidation()
   const { getBrew, createBrew, updateBrew } = useBrewCRUD()
+  const { trackVisit } = useActivityTracker()
+  useEffect(() => { trackVisit(isEdit ? `/brew/${id}/edit` : '/brew/new') }, [])
 
   const [formData, setFormData] = useState({
     bean: '',
@@ -96,9 +100,12 @@ export function BrewForm() {
           <Link to="/" style={{ color: 'var(--primary-brown)' }}>
             <h3 className="m-0">BrewLog</h3>
           </Link>
-          <Link to="/brews" style={{ color: 'var(--foreground)' }} className="text-sm hover:opacity-60 transition-opacity">
-            Brews
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link to="/brews" style={{ color: 'var(--foreground)' }} className="text-sm hover:opacity-60 transition-opacity">
+              Brews
+            </Link>
+            <ThemeToggle />
+          </div>
         </div>
       </nav>
 

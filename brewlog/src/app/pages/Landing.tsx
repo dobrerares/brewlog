@@ -1,7 +1,17 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router'
 import { Coffee, Clock, Target, BarChart3 } from 'lucide-react'
+import { ThemeToggle } from '../components/ThemeToggle'
+import { useActivityTracker } from '../hooks/useActivityTracker'
+import { useBrewCRUD } from '../hooks/useBrewCRUD'
 
 export function Landing() {
+  const { lastViewed, totalVisits, brewsLogged, trackVisit } = useActivityTracker()
+  const { getBrew } = useBrewCRUD()
+  const lastBrew = lastViewed ? getBrew(lastViewed.id) : null
+
+  useEffect(() => { trackVisit('/') }, [])
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)' }}>
       {/* Navigation */}
@@ -17,6 +27,7 @@ export function Landing() {
             <Link to="/brew/new" style={{ color: 'var(--accent-terracotta)' }} className="font-medium hover:opacity-80 transition-opacity">
               Log a Brew
             </Link>
+            <ThemeToggle />
           </div>
         </div>
       </nav>
@@ -39,6 +50,23 @@ export function Landing() {
           Track every brew with precision. Log beans, equipment, and roasters — dial in your grind with extraction
           feedback and build a searchable history of your coffee journey. All in one place.
         </p>
+
+        {(totalVisits > 0 || lastBrew) && (
+          <div className="mb-12 p-6 rounded-lg border text-sm" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
+            {totalVisits > 0 && (
+              <p style={{ color: 'var(--text-muted)' }}>
+                Welcome back! You've visited {totalVisits} times{brewsLogged > 0 ? ` and logged ${brewsLogged} brews` : ''}.
+              </p>
+            )}
+            {lastBrew && (
+              <p className="mt-2">
+                <Link to={`/brew/${lastBrew.id}`} className="font-medium hover:opacity-70 transition-opacity" style={{ color: 'var(--primary-brown)' }}>
+                  Continue where you left off → {lastBrew.bean}
+                </Link>
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-center gap-4 mb-16">
           <Link
