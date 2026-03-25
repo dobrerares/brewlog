@@ -13,12 +13,12 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'chromium-desktop',
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 } },
+      name: 'firefox-desktop',
+      use: { ...devices['Desktop Firefox'], viewport: { width: 1920, height: 1080 } },
     },
     {
-      name: 'chromium-tablet',
-      use: { ...devices['iPad Pro'], viewport: { width: 768, height: 1024 } },
+      name: 'firefox-tablet',
+      use: { ...devices['Desktop Firefox'], viewport: { width: 768, height: 1024 } },
     },
   ],
   webServer: {
