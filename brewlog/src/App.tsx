@@ -3,6 +3,7 @@ import { Landing } from './app/pages/Landing'
 import { BrewList } from './app/pages/BrewList'
 import { BrewDetail } from './app/pages/BrewDetail'
 import { BrewForm } from './app/pages/BrewForm'
+import { CookieConsent } from './app/components/CookieConsent'
 import './index.css'
 
 export function App() {
@@ -15,6 +16,7 @@ export function App() {
         <Route path="/brew/:id" element={<BrewDetail />} />
         <Route path="/brew/:id/edit" element={<BrewForm />} />
       </Routes>
+      <CookieConsent />
     </Router>
   )
 }
