@@ -1,5 +1,5 @@
 {
-  description = "BrewLog e2e testing environment";
+  description = "BrewLog development environment";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
@@ -16,36 +16,10 @@
           buildInputs = with pkgs; [
             nodejs_24
             firefox
-            playwright-driver
-            # X11 and graphics libraries for Firefox
-            libxcb
-            libX11
-            libXrandr
-            libXcomposite
-            libXcursor
-            libXdamage
-            libXfixes
-            libXi
-            libxtst
-            libxkbcommon
-            gtk3
-            gdk-pixbuf
-            pango
-            cairo
-            atk
-            libdbus
-            libfreetype
-            fontconfig
-            libasound
-            libxshmfence
-            mesa
-            xorg.libxinerama
-            xorg.libxext
           ];
 
           shellHook = ''
-            export PLAYWRIGHT_FIREFOX_INSTALL_DIR="${pkgs.firefox}"
-            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
           '';
         };
       }
