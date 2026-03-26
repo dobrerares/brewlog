@@ -1,11 +1,13 @@
 import { useParams, Link, useNavigate } from 'react-router'
 import { useState, useEffect } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { beans, methods, grinders, brewers, flavorOptions, tasteOptions } from '../data/mockData'
 import { useBrewValidation } from '../hooks/useBrewValidation'
 import { useBrewCRUD } from '../hooks/useBrewCRUD'
 import { useActivityTracker } from '../hooks/useActivityTracker'
-import { ThemeToggle } from '../components/ThemeToggle'
+import { Navbar } from '../components/Navbar'
+import { StarRating } from '../components/StarRating'
+import { FlavorTag } from '../components/FlavorTag'
 
 export function BrewForm() {
   const { id } = useParams()
@@ -35,8 +37,8 @@ export function BrewForm() {
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
 
-  // Pre-fill form when editing
   useEffect(() => {
     if (isEdit && id) {
       const brew = getBrew(id)
@@ -68,22 +70,29 @@ export function BrewForm() {
       ...prev,
       [name]: ['dose', 'water', 'temp', 'yield', 'rating'].includes(name) ? parseFloat(value) : value
     }))
+    if (touched[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }))
+    }
+  }
+
+  const handleBlur = (name: string) => {
+    setTouched(prev => ({ ...prev, [name]: true }))
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const validationErrors = validateForm(formData as any)
-
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
+      const allTouched: Record<string, boolean> = {}
+      Object.keys(validationErrors).forEach(k => { allTouched[k] = true })
+      setTouched(prev => ({ ...prev, ...allTouched }))
       return
     }
-
     const brewData = {
       ...formData,
       taste: formData.taste as 'Balanced' | 'Sour' | 'Bitter' | 'Watery' | 'Astringent'
     }
-
     if (isEdit && id) {
       updateBrew(id, brewData)
       navigate(`/brew/${id}`)
@@ -93,263 +102,145 @@ export function BrewForm() {
     }
   }
 
+  const ErrorMessage = ({ message }: { message?: string }) => {
+    if (!message) return null
+    return (
+      <div className="flex items-center gap-1 mt-1 text-xs text-red-600">
+        <AlertCircle size={12} />
+        <span>{message}</span>
+      </div>
+    )
+  }
+
+  const inputClass = (field: string) =>
+    `w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 transition-colors ${
+      touched[field] && errors[field] ? 'border-red-500' : ''
+    }`
+
+  const inputStyle = (field: string) => ({
+    backgroundColor: 'var(--background)',
+    color: 'var(--foreground)',
+    borderColor: touched[field] && errors[field] ? undefined : 'var(--border-color)'
+  })
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
-      <nav style={{ borderColor: 'var(--border-color)' }} className="border-b">
-        <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
-          <Link to="/" style={{ color: 'var(--primary-brown)' }}>
-            <h3 className="m-0">BrewLog</h3>
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link to="/brews" style={{ color: 'var(--foreground)' }} className="text-sm hover:opacity-60 transition-opacity">
-              Brews
-            </Link>
-            <ThemeToggle />
-          </div>
-        </div>
-      </nav>
+      <Navbar type="app" />
 
-      <div className="max-w-3xl mx-auto px-8 py-12">
+      <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
         <Link
           to={isEdit ? `/brew/${id}` : '/brews'}
-          className="inline-flex items-center gap-2 mb-8 font-medium hover:opacity-60 transition-opacity"
+          className="inline-flex items-center gap-1 text-sm hover:underline mb-6"
           style={{ color: 'var(--primary-brown)' }}
         >
           <ArrowLeft size={16} /> Back
         </Link>
 
-        <div style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }} className="border rounded-lg p-8">
-          <h1 style={{ color: 'var(--primary-dark)' }} className="mb-8">
-            {isEdit ? 'Edit Brew Log' : 'Log a New Brew'}
+        <div className="rounded-xl border p-6 sm:p-8 animate-fadeIn" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
+          <h1 className="text-2xl mb-8" style={{ fontFamily: 'var(--font-heading)' }}>
+            {isEdit ? 'Edit brew log' : 'Log a new brew'}
           </h1>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Bean & Method */}
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="space-y-8">
+            {/* Top grid: Date, Method, Bean, Grinder, Grind, Brewer */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Bean *</label>
-                <select
-                  name="bean"
-                  value={formData.bean}
-                  onChange={handleChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors ${
-                    errors.bean ? 'border-red-500' : ''
-                  }`}
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: errors.bean ? undefined : 'var(--border-color)'
-                  }}
-                >
-                  <option value="">Select bean</option>
-                  {beans.map(bean => (
-                    <option key={bean} value={bean}>{bean}</option>
-                  ))}
-                </select>
-                {errors.bean && <p style={{ color: 'var(--red)' }} className="text-xs mt-1">{errors.bean}</p>}
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Date</label>
+                <input type="date" name="date" value={formData.date} onChange={handleChange}
+                  className={inputClass('date')} style={inputStyle('date')} />
               </div>
-
               <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Method *</label>
-                <select
-                  name="method"
-                  value={formData.method}
-                  onChange={handleChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors ${
-                    errors.method ? 'border-red-500' : ''
-                  }`}
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: errors.method ? undefined : 'var(--border-color)'
-                  }}
-                >
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Method <span className="text-red-500">*</span></label>
+                <select name="method" value={formData.method} onChange={handleChange} onBlur={() => handleBlur('method')}
+                  className={inputClass('method')} style={inputStyle('method')}>
                   <option value="">Select method</option>
-                  {methods.map(method => (
-                    <option key={method} value={method}>{method}</option>
-                  ))}
+                  {methods.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
-                {errors.method && <p style={{ color: 'var(--red)' }} className="text-xs mt-1">{errors.method}</p>}
+                <ErrorMessage message={touched.method ? errors.method : undefined} />
               </div>
-            </div>
-
-            {/* Date & Grinder */}
-            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Date *</label>
-                <input
-                  type="date"
-                  name="date"
-                  value={formData.date}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                />
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Bean <span className="text-red-500">*</span></label>
+                <select name="bean" value={formData.bean} onChange={handleChange} onBlur={() => handleBlur('bean')}
+                  className={inputClass('bean')} style={inputStyle('bean')}>
+                  <option value="">Select bean</option>
+                  {beans.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+                <ErrorMessage message={touched.bean ? errors.bean : undefined} />
               </div>
-
               <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Grinder *</label>
-                <select
-                  name="grinder"
-                  value={formData.grinder}
-                  onChange={handleChange}
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                >
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Grinder <span className="text-red-500">*</span></label>
+                <select name="grinder" value={formData.grinder} onChange={handleChange} onBlur={() => handleBlur('grinder')}
+                  className={inputClass('grinder')} style={inputStyle('grinder')}>
                   <option value="">Select grinder</option>
-                  {grinders.map(g => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
+                  {grinders.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
+                <ErrorMessage message={touched.grinder ? errors.grinder : undefined} />
               </div>
-            </div>
-
-            {/* Dose, Water, Temp, Time */}
-            <div className="grid grid-cols-4 gap-4">
               <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Dose (g) *</label>
-                <input
-                  type="number"
-                  name="dose"
-                  value={formData.dose}
-                  onChange={handleChange}
-                  step="0.1"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                />
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Grind setting <span className="text-red-500">*</span></label>
+                <input type="text" name="grind" placeholder="e.g. 24 clicks" value={formData.grind} onChange={handleChange} onBlur={() => handleBlur('grind')}
+                  className={inputClass('grind')} style={inputStyle('grind')} />
+                <ErrorMessage message={touched.grind ? errors.grind : undefined} />
               </div>
-
               <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Water (g) *</label>
-                <input
-                  type="number"
-                  name="water"
-                  value={formData.water}
-                  onChange={handleChange}
-                  step="1"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Temp (°C) *</label>
-                <input
-                  type="number"
-                  name="temp"
-                  value={formData.temp}
-                  onChange={handleChange}
-                  step="1"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Time (MM:SS) *</label>
-                <input
-                  type="text"
-                  name="time"
-                  value={formData.time}
-                  onChange={handleChange}
-                  placeholder="2:30"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Grind & Brewer & Yield */}
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Grind Setting *</label>
-                <input
-                  type="text"
-                  name="grind"
-                  value={formData.grind}
-                  onChange={handleChange}
-                  placeholder="e.g. 22 clicks"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Brewer</label>
-                <select
-                  name="brewer"
-                  value={formData.brewer}
-                  onChange={handleChange}
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                >
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Brewer</label>
+                <select name="brewer" value={formData.brewer} onChange={handleChange}
+                  className={inputClass('brewer')} style={inputStyle('brewer')}>
                   <option value="">Select brewer</option>
-                  {brewers.map(b => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
+                  {brewers.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
-              </div>
-
-              <div>
-                <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Yield (g)</label>
-                <input
-                  type="number"
-                  name="yield"
-                  value={formData.yield}
-                  onChange={handleChange}
-                  step="1"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors"
-                  style={{
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    borderColor: 'var(--border-color)'
-                  }}
-                />
               </div>
             </div>
 
-            <div style={{ borderColor: 'var(--border-color)' }} className="border-t" />
+            <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
 
-            {/* Review Section */}
+            {/* Brew params */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Dose (g) <span className="text-red-500">*</span></label>
+                <input type="number" name="dose" step="0.1" value={formData.dose} onChange={handleChange} onBlur={() => handleBlur('dose')}
+                  className={inputClass('dose')} style={inputStyle('dose')} />
+                <ErrorMessage message={touched.dose ? errors.dose : undefined} />
+              </div>
+              <div>
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Water (g) <span className="text-red-500">*</span></label>
+                <input type="number" name="water" step="1" value={formData.water} onChange={handleChange} onBlur={() => handleBlur('water')}
+                  className={inputClass('water')} style={inputStyle('water')} />
+                <ErrorMessage message={touched.water ? errors.water : undefined} />
+              </div>
+              <div>
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Temp (°C) <span className="text-red-500">*</span></label>
+                <input type="number" name="temp" step="1" value={formData.temp} onChange={handleChange} onBlur={() => handleBlur('temp')}
+                  className={inputClass('temp')} style={inputStyle('temp')} />
+                <ErrorMessage message={touched.temp ? errors.temp : undefined} />
+              </div>
+              <div>
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Brew time <span className="text-red-500">*</span></label>
+                <input type="text" name="time" placeholder="e.g. 2:30" value={formData.time} onChange={handleChange} onBlur={() => handleBlur('time')}
+                  className={inputClass('time')} style={inputStyle('time')} />
+                <ErrorMessage message={touched.time ? errors.time : undefined} />
+              </div>
+              <div>
+                <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Yield (g, optional)</label>
+                <input type="number" name="yield" step="1" value={formData.yield} onChange={handleChange}
+                  className={inputClass('yield')} style={inputStyle('yield')} />
+              </div>
+            </div>
+
+            <div className="h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+
+            {/* Post-brew review */}
             <div>
-              <h3 style={{ color: 'var(--primary-brown)' }} className="text-sm font-semibold uppercase mb-4">Post-Brew Review</h3>
+              <p className="text-xs font-semibold mb-4 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                Post-brew review
+              </p>
 
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div>
-                  <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Taste *</label>
-                  <div className="flex flex-wrap gap-2">
+                  <label className="block text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
+                    How did it taste? <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex flex-wrap gap-3">
                     {tasteOptions.map(option => (
                       <button
                         key={option.value}
@@ -368,31 +259,28 @@ export function BrewForm() {
                 </div>
 
                 <div>
-                  <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Rating *</label>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4, 5].map(r => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, rating: r }))}
-                        className="text-3xl transition-transform"
-                        style={{
-                          opacity: formData.rating >= r ? 1 : 0.3
-                        }}
-                      >
-                        ⭐
-                      </button>
-                    ))}
-                  </div>
+                  <label className="block text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
+                    Rating <span className="text-red-500">*</span>
+                  </label>
+                  <StarRating
+                    rating={formData.rating}
+                    size={28}
+                    interactive
+                    onChange={(r) => setFormData(prev => ({ ...prev, rating: r }))}
+                  />
+                  <ErrorMessage message={touched.rating ? errors.rating : undefined} />
                 </div>
 
                 <div>
-                  <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Tasting Notes</label>
+                  <label className="block text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
+                    Tasting notes
+                  </label>
                   <div className="flex flex-wrap gap-2">
                     {flavorOptions.map(flavor => (
-                      <button
+                      <FlavorTag
                         key={flavor}
-                        type="button"
+                        label={flavor}
+                        selected={formData.flavorTags.includes(flavor)}
                         onClick={() =>
                           setFormData(prev => ({
                             ...prev,
@@ -401,53 +289,39 @@ export function BrewForm() {
                               : [...prev.flavorTags, flavor]
                           }))
                         }
-                        className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
-                        style={{
-                          backgroundColor: formData.flavorTags.includes(flavor) ? 'var(--primary-brown)' : 'var(--cream)',
-                          color: formData.flavorTags.includes(flavor) ? '#FFFFFF' : 'var(--primary-brown)'
-                        }}
-                      >
-                        {flavor}
-                      </button>
+                      />
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label style={{ color: 'var(--text-muted)' }} className="block text-sm font-medium mb-2">Notes</label>
+                  <label className="block text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Notes</label>
                   <textarea
                     name="notes"
                     value={formData.notes}
                     onChange={handleChange}
                     rows={3}
                     placeholder="How was this cup?"
-                    className="w-full px-4 py-2 border rounded-lg focus:outline-none transition-colors resize-none"
-                    style={{
-                      backgroundColor: 'var(--background)',
-                      color: 'var(--foreground)',
-                      borderColor: 'var(--border-color)'
-                    }}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 transition-colors resize-none"
+                    style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)', borderColor: 'var(--border-color)' }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Form Actions */}
-            <div className="flex gap-4 pt-4">
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 pt-4">
               <button
                 type="submit"
-                className="px-8 py-3 text-white rounded-lg hover:opacity-90 font-medium transition-colors"
+                className="w-full sm:w-auto px-8 py-3 text-white rounded-lg hover:opacity-90 transition-colors font-medium"
                 style={{ backgroundColor: 'var(--primary-brown)' }}
               >
-                {isEdit ? 'Save Changes' : 'Log Brew'}
+                {isEdit ? 'Save changes' : 'Log brew'}
               </button>
               <Link
                 to={isEdit ? `/brew/${id}` : '/brews'}
-                className="px-8 py-3 rounded-lg font-medium transition-colors"
-                style={{
-                  backgroundColor: 'var(--cream)',
-                  color: 'var(--primary-brown)'
-                }}
+                className="w-full sm:w-auto text-center px-8 py-3 rounded-lg transition-colors"
+                style={{ color: 'var(--primary-brown)' }}
               >
                 Cancel
               </Link>

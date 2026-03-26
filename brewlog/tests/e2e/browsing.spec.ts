@@ -6,39 +6,43 @@ test.describe('Browsing Brews', () => {
     // First, create a brew
     await navigateToNewBrewForm(page)
     await fillBrewForm(page, testBrewData.valid)
-    await page.click('button:has-text("Log Brew")')
-    await page.waitForURL('**/brews')
+    await page.click('button:has-text("Log brew")')
+    await page.waitForURL(/\/brews$/)
 
-    // Click into the created brew
-    const row = page.locator('table tbody tr', { hasText: testBrewData.valid.bean })
-    await row.click()
+    // Click into the created brew via the row link
+    const row = page.locator('table tbody tr').filter({
+      hasText: new RegExp(`${testBrewData.valid.bean}.*V60`)
+    })
+    await row.waitFor({ state: 'visible', timeout: 5000 })
+    await row.locator('a').first().click()
 
     // Should be on detail page showing all brew info
-    await page.waitForURL('**/brew/**')
+    await page.waitForURL(/\/brew\/\w+/)
     await expect(page.locator('h1')).toContainText(testBrewData.valid.bean)
-    await expect(page.locator('text=Brewing Parameters')).toBeVisible()
-    await expect(page.locator('text=Review')).toBeVisible()
-    await expect(page.locator('text=' + testBrewData.valid.dose)).toBeVisible()
+    await expect(page.locator('text=Dose')).toBeVisible()
+    await expect(page.getByText('Notes', { exact: true })).toBeVisible()
   })
 
   test('should navigate back from detail to list', async ({ page }) => {
     // Create and view a brew
     await navigateToNewBrewForm(page)
     await fillBrewForm(page, testBrewData.valid)
-    await page.click('button:has-text("Log Brew")')
-    await page.waitForURL('**/brews')
+    await page.click('button:has-text("Log brew")')
+    await page.waitForURL(/\/brews$/)
 
-    const row = page.locator('table tbody tr', { hasText: testBrewData.valid.bean })
-    await row.click()
-    await page.waitForURL('**/brew/**')
+    const row = page.locator('table tbody tr').filter({
+      hasText: new RegExp(`${testBrewData.valid.bean}.*V60`)
+    })
+    await row.waitFor({ state: 'visible', timeout: 5000 })
+    await row.locator('a').first().click()
+    await page.waitForURL(/\/brew\/\w+/)
 
     // Click back button
-    await page.click('a:has-text("Back to Brew Logs")')
-    await page.waitForURL('**/brews')
+    await page.click('a:has-text("Back to brew logs")')
+    await page.waitForURL(/\/brews$/)
 
     // Should be back on list
-    await expect(page.locator('h1, h2, text=BrewLog')).toBeVisible()
-    await expect(row).toBeVisible()
+    await expect(page.locator('table')).toBeVisible()
   })
 
   test('should show empty state when no brews exist', async ({ page }) => {

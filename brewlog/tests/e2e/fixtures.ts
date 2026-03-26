@@ -2,7 +2,7 @@ import { Page } from '@playwright/test'
 
 export const testBrewData = {
   valid: {
-    bean: 'Yirgacheffe Konga',
+    bean: 'Kenya AA',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 18,
@@ -16,7 +16,7 @@ export const testBrewData = {
     notes: 'Great acidity, fruity notes',
   },
   invalidDose: {
-    bean: 'Yirgacheffe Konga',
+    bean: 'Kenya AA',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 0, // invalid
@@ -30,7 +30,7 @@ export const testBrewData = {
     notes: '',
   },
   invalidTemp: {
-    bean: 'Yirgacheffe Konga',
+    bean: 'Kenya AA',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 18,
@@ -44,7 +44,7 @@ export const testBrewData = {
     notes: '',
   },
   invalidRatio: {
-    bean: 'Yirgacheffe Konga',
+    bean: 'Kenya AA',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 30,
@@ -58,7 +58,7 @@ export const testBrewData = {
     notes: '',
   },
   lowRatingNoNotes: {
-    bean: 'Yirgacheffe Konga',
+    bean: 'Kenya AA',
     method: 'V60',
     date: new Date().toISOString().split('T')[0],
     dose: 18,
@@ -85,9 +85,10 @@ export async function fillBrewForm(page: Page, brew: typeof testBrewData.valid) 
   await page.selectOption('[name="grinder"]', brew.grinder)
   // Taste button
   await page.click(`button:has-text("${brew.taste}")`)
-  // Rating stars
+  // Rating stars (SVG-based StarRating component)
+  const stars = page.locator('[data-testid="star-rating"] button')
   for (let i = 0; i < brew.rating; i++) {
-    await page.locator('button[type="button"]').filter({ hasText: '⭐' }).nth(i).click()
+    await stars.nth(i).click()
   }
   if (brew.notes) {
     await page.fill('[name="notes"]', brew.notes)
@@ -95,8 +96,7 @@ export async function fillBrewForm(page: Page, brew: typeof testBrewData.valid) 
 }
 
 export async function navigateToNewBrewForm(page: Page) {
-  await page.goto('/')
-  await page.click('a:has-text("Log a Brew")')
+  await page.goto('/brew/new')
   await page.waitForURL(/\/brew\/new$/)
 }
 

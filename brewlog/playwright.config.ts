@@ -1,7 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const isNixOS = process.env.NIXOS_SYSTEM_FIREFOX === 'true'
-
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -12,6 +10,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'on-first-retry',
+    launchOptions: {
+      executablePath: process.env.PLAYWRIGHT_FIREFOX_PATH || undefined,
+    },
   },
   projects: [
     {
@@ -19,9 +20,6 @@ export default defineConfig({
       use: {
         ...devices['Desktop Firefox'],
         viewport: { width: 1920, height: 1080 },
-        ...(isNixOS && {
-          launchArgs: ['-no-remote'],
-        }),
       },
     },
     {
@@ -29,9 +27,6 @@ export default defineConfig({
       use: {
         ...devices['Desktop Firefox'],
         viewport: { width: 768, height: 1024 },
-        ...(isNixOS && {
-          launchArgs: ['-no-remote'],
-        }),
       },
     },
   ],

@@ -12,9 +12,8 @@ test.describe('Cookie-Based Features', () => {
     await page.click('button[aria-label="Switch to dark mode"]')
     await expect(html).toHaveAttribute('data-theme', 'dark')
 
-    // Navigate to another page - theme should persist
-    await page.click('a:has-text("View Logs")')
-    await page.waitForURL(/\/brews$/)
+    // Navigate to brews page - theme should persist
+    await page.goto('/brews')
     await expect(html).toHaveAttribute('data-theme', 'dark')
 
     // Toggle back to light
@@ -44,9 +43,9 @@ test.describe('Cookie-Based Features', () => {
     // Go to brews list
     await page.goto('/brews')
 
-    // Click View on first brew
+    // Click on the first brew via the row link
     const firstRow = page.locator('table tbody tr').first()
-    await firstRow.locator('a:has-text("View")').click()
+    await firstRow.locator('a').first().click()
     await page.waitForURL(/\/brew\/\w+/)
 
     // Get the bean name from detail page h1

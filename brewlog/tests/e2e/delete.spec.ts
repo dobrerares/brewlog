@@ -6,25 +6,31 @@ test.describe('Delete Brew', () => {
     // First, create a brew
     await navigateToNewBrewForm(page)
     await fillBrewForm(page, testBrewData.valid)
-    await page.click('button:has-text("Log Brew")')
-    await page.waitForURL('**/brews')
+    await page.click('button:has-text("Log brew")')
+    await page.waitForURL(/\/brews$/)
 
     // Verify brew is in list
-    const row = page.locator('table tbody tr', { hasText: testBrewData.valid.bean })
+    const row = page.locator('table tbody tr').filter({
+      hasText: new RegExp(`${testBrewData.valid.bean}.*V60`)
+    })
+    await row.waitFor({ state: 'visible', timeout: 5000 })
     await expect(row).toBeVisible()
 
     // Click on the brew to go to detail page
-    await row.click()
-    await page.waitForURL('**/brew/**')
+    await row.locator('a').first().click()
+    await page.waitForURL(/\/brew\/\w+/)
 
-    // Click delete button
+    // Click Delete button on detail page to open modal
     await page.click('button:has-text("Delete")')
 
-    // Confirm delete in dialog
-    await page.click('button:has-text("Delete"), button:has-text("Confirm")')
+    // Wait for the confirmation modal to appear
+    await page.locator('text=Delete brew log?').waitFor({ state: 'visible' })
+
+    // Confirm deletion by clicking the modal's Delete button
+    await page.locator('.fixed.z-50 button:has-text("Delete")').click()
 
     // Should be redirected to brews list
-    await page.waitForURL('**/brews')
+    await page.waitForURL(/\/brews$/)
 
     // Verify brew is removed from list
     await expect(row).not.toBeVisible()
@@ -34,30 +40,36 @@ test.describe('Delete Brew', () => {
     // First, create a brew
     await navigateToNewBrewForm(page)
     await fillBrewForm(page, testBrewData.valid)
-    await page.click('button:has-text("Log Brew")')
-    await page.waitForURL('**/brews')
+    await page.click('button:has-text("Log brew")')
+    await page.waitForURL(/\/brews$/)
 
     // Verify brew is in list
-    const row = page.locator('table tbody tr', { hasText: testBrewData.valid.bean })
+    const row = page.locator('table tbody tr').filter({
+      hasText: new RegExp(`${testBrewData.valid.bean}.*V60`)
+    })
+    await row.waitFor({ state: 'visible', timeout: 5000 })
     await expect(row).toBeVisible()
 
     // Click on the brew to go to detail page
-    await row.click()
-    await page.waitForURL('**/brew/**')
+    await row.locator('a').first().click()
+    await page.waitForURL(/\/brew\/\w+/)
 
-    // Click delete button
+    // Click Delete button on detail page to open modal
     await page.click('button:has-text("Delete")')
 
-    // Cancel delete in dialog
-    await page.click('button:has-text("Cancel")')
+    // Wait for the confirmation modal to appear
+    await page.locator('text=Delete brew log?').waitFor({ state: 'visible' })
+
+    // Cancel by clicking Cancel button in modal
+    await page.locator('.fixed.z-50 button:has-text("Cancel")').click()
 
     // Should still be on detail page
-    await expect(page).toHaveURL('**/brew/**')
+    await expect(page).toHaveURL(/\/brew\/\w+/)
     await expect(page.locator('h1')).toContainText(testBrewData.valid.bean)
 
     // Navigate back to list
-    await page.click('a:has-text("Back to Brew Logs")')
-    await page.waitForURL('**/brews')
+    await page.click('a:has-text("Back to brew logs")')
+    await page.waitForURL(/\/brews$/)
 
     // Verify brew still exists in list
     await expect(row).toBeVisible()

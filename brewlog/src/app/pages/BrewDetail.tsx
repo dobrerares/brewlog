@@ -1,25 +1,29 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router'
-import { ArrowLeft, Trash2, Edit2 } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
+import { Navbar } from '../components/Navbar'
+import { StarRating } from '../components/StarRating'
+import { TasteBadge } from '../components/TasteBadge'
+import { FlavorTag } from '../components/FlavorTag'
+import { DeleteConfirmModal } from '../components/DeleteConfirmModal'
 import { useBrewCRUD } from '../hooks/useBrewCRUD'
 import { useActivityTracker } from '../hooks/useActivityTracker'
-import { ThemeToggle } from '../components/ThemeToggle'
 import type { BrewLog } from '../data/mockData'
 
 export function BrewDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { getBrew, deleteBrew } = useBrewCRUD()
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   const brew = id ? getBrew(id) : null
 
   if (!brew) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--background)' }}>
-        <div className="text-center">
-          <p className="mb-4 text-base" style={{ color: 'var(--text-muted)' }}>
-            Brew not found
-          </p>
+      <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
+        <Navbar type="app" />
+        <div className="max-w-3xl mx-auto px-8 py-8 text-center">
+          <p className="mb-4 text-base" style={{ color: 'var(--text-muted)' }}>Brew not found</p>
           <Link to="/brews" className="font-medium hover:opacity-60 transition-opacity" style={{ color: 'var(--primary-brown)' }}>
             Back to Brew Logs
           </Link>
@@ -28,134 +32,122 @@ export function BrewDetail() {
     )
   }
 
-  // Type guard for TypeScript
   const b = brew as BrewLog
-
   const { setLastViewed, trackVisit } = useActivityTracker()
-
   useEffect(() => {
     trackVisit(`/brew/${id}`)
     setLastViewed({ id: id!, bean: b.bean })
   }, [id])
 
   const handleDelete = () => {
-    if (confirm('Delete this brew?')) {
-      deleteBrew(id!)
-      navigate('/brews')
-    }
+    deleteBrew(id!)
+    setShowDeleteModal(false)
+    navigate('/brews')
   }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
-      <nav style={{ borderColor: 'var(--border-color)' }} className="border-b">
-        <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
-          <Link to="/" style={{ color: 'var(--primary-brown)' }}>
-            <h3 className="m-0">BrewLog</h3>
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link to="/brews" style={{ color: 'var(--foreground)' }} className="text-sm hover:opacity-60 transition-opacity">
-              Brews
-            </Link>
-            <ThemeToggle />
-          </div>
-        </div>
-      </nav>
+      <Navbar type="app" />
 
-      <div className="max-w-4xl mx-auto px-8 py-12">
+      <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
         <Link
           to="/brews"
-          className="inline-flex items-center gap-2 mb-8 font-medium hover:opacity-60 transition-opacity"
+          className="inline-flex items-center gap-1 text-sm hover:underline mb-6"
           style={{ color: 'var(--primary-brown)' }}
         >
-          <ArrowLeft size={16} /> Back to Brew Logs
+          <ArrowLeft size={16} /> Back to brew logs
         </Link>
 
-        <div style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }} className="border rounded-lg p-8">
-          <div className="flex items-start justify-between mb-8">
+        <div className="rounded-xl border p-6 sm:p-8 animate-fadeIn" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row items-start justify-between mb-6 gap-4">
             <div>
-              <h1 style={{ color: 'var(--primary-dark)' }} className="mb-2">
+              <h1 className="text-3xl mb-2" style={{ fontFamily: 'var(--font-heading)' }}>
                 {b.bean}
               </h1>
-              <p style={{ color: 'var(--text-muted)' }} className="text-sm">
-                {b.method} • {new Date(b.date).toLocaleDateString()}
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {b.method} · {new Date(b.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
               <Link
                 to={`/brew/${id}/edit`}
-                className="flex items-center gap-2 px-4 py-2 rounded hover:opacity-90 transition-colors text-white text-sm font-medium"
-                style={{ backgroundColor: 'var(--primary-brown)' }}
+                className="px-4 py-2 rounded-lg border transition-colors text-sm font-medium"
+                style={{ backgroundColor: 'var(--cream)', color: 'var(--primary-brown)', borderColor: 'var(--border-color)' }}
               >
-                <Edit2 size={16} /> Edit
+                Edit
               </Link>
               <button
-                onClick={handleDelete}
-                className="flex items-center gap-2 px-4 py-2 rounded hover:opacity-90 transition-colors text-white text-sm font-medium"
-                style={{ backgroundColor: 'var(--red)' }}
+                onClick={() => setShowDeleteModal(true)}
+                className="px-4 py-2 rounded-lg border transition-colors text-sm font-medium"
+                style={{ backgroundColor: '#B85C4A15', color: 'var(--red)', borderColor: '#B85C4A30' }}
               >
-                <Trash2 size={16} /> Delete
+                Delete
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-8 mb-8">
-            <div>
-              <h3 className="font-semibold mb-4" style={{ color: 'var(--primary-brown)' }}>Brewing Parameters</h3>
-              <dl className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--text-muted)' }}>Dose:</dt>
-                  <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{b.dose}g</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--text-muted)' }}>Water:</dt>
-                  <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{b.water}g</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--text-muted)' }}>Temperature:</dt>
-                  <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{b.temp}°C</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--text-muted)' }}>Brew Time:</dt>
-                  <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{b.time}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--text-muted)' }}>Grind:</dt>
-                  <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{b.grind}</dd>
-                </div>
-              </dl>
-            </div>
-
-            <div>
-              <h3 className="font-semibold mb-4" style={{ color: 'var(--primary-brown)' }}>Review</h3>
-              <dl className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--text-muted)' }}>Rating:</dt>
-                  <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{'⭐'.repeat(b.rating)}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--text-muted)' }}>Taste:</dt>
-                  <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{b.taste}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt style={{ color: 'var(--text-muted)' }}>Grinder:</dt>
-                  <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{b.grinder}</dd>
-                </div>
-                {b.brewer && (
-                  <div className="flex justify-between">
-                    <dt style={{ color: 'var(--text-muted)' }}>Brewer:</dt>
-                    <dd className="font-medium" style={{ color: 'var(--foreground)' }}>{b.brewer}</dd>
-                  </div>
-                )}
-              </dl>
-            </div>
+          {/* Rating & Taste */}
+          <div className="flex items-center gap-3 mb-8">
+            <StarRating rating={b.rating} size={20} />
+            <TasteBadge taste={b.taste} />
           </div>
 
+          {/* Parameters Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+            {[
+              { label: 'Dose', value: `${b.dose}g` },
+              { label: 'Water', value: `${b.water}g` },
+              { label: 'Temp', value: `${b.temp}°C` },
+              { label: 'Time', value: b.time },
+              { label: 'Grind', value: b.grind },
+              { label: 'Grinder', value: b.grinder },
+            ].map(({ label, value }) => (
+              <div key={label} className="rounded-lg p-4" style={{ backgroundColor: 'var(--cream)' }}>
+                <p className="text-xs mb-1 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                <p className="text-xl font-semibold" style={{ color: 'var(--primary-dark)' }}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {b.brewer && (
+            <div className="rounded-lg p-4 mb-8" style={{ backgroundColor: 'var(--cream)' }}>
+              <p className="text-xs mb-1 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Brewer</p>
+              <p className="text-lg font-semibold" style={{ color: 'var(--primary-dark)' }}>{b.brewer}</p>
+            </div>
+          )}
+
+          {/* Flavor Tags */}
+          {b.flavorTags.length > 0 && (
+            <div className="mb-8">
+              <p className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                Tasting notes
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {b.flavorTags.map(tag => (
+                  <FlavorTag key={tag} label={tag} selected />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
           <div>
-            <h3 className="font-semibold mb-2" style={{ color: 'var(--primary-brown)' }}>Notes</h3>
-            <p className="whitespace-pre-wrap" style={{ color: 'var(--text-muted)' }}>{b.notes || '(No notes)'}</p>
+            <p className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+              Notes
+            </p>
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--foreground)' }}>
+              {b.notes || '(No notes)'}
+            </p>
           </div>
         </div>
       </div>
+
+      <DeleteConfirmModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+      />
     </div>
   )
 }
