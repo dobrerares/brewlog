@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { testBrewData, fillBrewForm, navigateToNewBrewForm } from './fixtures'
+import { testBrewData, fillBrewForm, navigateToNewBrewForm, findBrewRowAcrossPages } from './fixtures'
 
 test.describe('Delete Brew', () => {
   test('should delete a brew and remove from list', async ({ page }) => {
@@ -10,10 +10,7 @@ test.describe('Delete Brew', () => {
     await page.waitForURL(/\/brews$/)
 
     // Verify brew is in list
-    const row = page.locator('table tbody tr').filter({
-      hasText: new RegExp(`${testBrewData.valid.bean}.*V60`)
-    })
-    await row.waitFor({ state: 'visible', timeout: 5000 })
+    const row = await findBrewRowAcrossPages(page, new RegExp(`${testBrewData.valid.bean}.*V60`))
     await expect(row).toBeVisible()
 
     // Click on the brew to go to detail page
@@ -44,10 +41,7 @@ test.describe('Delete Brew', () => {
     await page.waitForURL(/\/brews$/)
 
     // Verify brew is in list
-    const row = page.locator('table tbody tr').filter({
-      hasText: new RegExp(`${testBrewData.valid.bean}.*V60`)
-    })
-    await row.waitFor({ state: 'visible', timeout: 5000 })
+    const row = await findBrewRowAcrossPages(page, new RegExp(`${testBrewData.valid.bean}.*V60`))
     await expect(row).toBeVisible()
 
     // Click on the brew to go to detail page

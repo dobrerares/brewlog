@@ -164,3 +164,103 @@ a, button {
 body, nav, .rounded-xl, .rounded-lg, input, select, textarea, th, td {
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
+
+/* Route-to-route transitions */
+.route-shell {
+  will-change: opacity, transform;
+}
+
+@keyframes routeEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes routeExit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.997);
+  }
+}
+
+@keyframes routeEnterForward {
+  from {
+    opacity: 0;
+    transform: translateX(16px) translateY(6px) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+}
+
+@keyframes routeEnterBack {
+  from {
+    opacity: 0;
+    transform: translateX(-16px) translateY(6px) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0) scale(1);
+  }
+}
+
+@keyframes routeExitForward {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-10px) scale(0.998);
+  }
+}
+
+@keyframes routeExitBack {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(10px) scale(0.998);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .route-shell.page-enter {
+    animation: routeEnter 280ms cubic-bezier(0.18, 0.78, 0.32, 1) both;
+  }
+
+  .route-shell.page-enter.direction-forward {
+    animation: routeEnterForward 280ms cubic-bezier(0.18, 0.78, 0.32, 1) both;
+  }
+
+  .route-shell.page-enter.direction-back {
+    animation: routeEnterBack 280ms cubic-bezier(0.18, 0.78, 0.32, 1) both;
+  }
+
+  .route-shell.page-exit {
+    animation: routeExit 160ms ease both;
+    pointer-events: none;
+  }
+
+  .route-shell.page-exit.direction-forward {
+    animation: routeExitForward 160ms ease both;
+    pointer-events: none;
+  }
+
+  .route-shell.page-exit.direction-back {
+    animation: routeExitBack 160ms ease both;
+    pointer-events: none;
+  }
+}

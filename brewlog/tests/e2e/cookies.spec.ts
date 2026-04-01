@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { dismissCookieBanner } from './fixtures'
 
 test.describe('Cookie-Based Features', () => {
   test('should toggle theme and persist across page navigation', async ({ page }) => {
     await page.goto('/')
+    await dismissCookieBanner(page)
 
     // Should start in light mode
     const html = page.locator('html')
@@ -42,6 +44,8 @@ test.describe('Cookie-Based Features', () => {
   test('should track last viewed brew and show continue link on landing', async ({ page }) => {
     // Go to brews list
     await page.goto('/brews')
+    await dismissCookieBanner(page)
+    await expect(page.locator('table tbody tr').first()).toBeVisible()
 
     // Click on the first brew via the row link
     const firstRow = page.locator('table tbody tr').first()
@@ -63,6 +67,7 @@ test.describe('Cookie-Based Features', () => {
   test('should show activity stats on landing after browsing', async ({ page }) => {
     // Visit landing (this is visit 1)
     await page.goto('/')
+    await dismissCookieBanner(page)
 
     // Visit brews page
     await page.goto('/brews')

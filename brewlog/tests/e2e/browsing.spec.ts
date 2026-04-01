@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { testBrewData, fillBrewForm, navigateToNewBrewForm, navigateToBrewList } from './fixtures'
+import { testBrewData, fillBrewForm, navigateToNewBrewForm, navigateToBrewList, findBrewRowAcrossPages } from './fixtures'
 
 test.describe('Browsing Brews', () => {
   test('should view brew list and navigate to detail page', async ({ page }) => {
@@ -10,10 +10,7 @@ test.describe('Browsing Brews', () => {
     await page.waitForURL(/\/brews$/)
 
     // Click into the created brew via the row link
-    const row = page.locator('table tbody tr').filter({
-      hasText: new RegExp(`${testBrewData.valid.bean}.*V60`)
-    })
-    await row.waitFor({ state: 'visible', timeout: 5000 })
+    const row = await findBrewRowAcrossPages(page, new RegExp(`${testBrewData.valid.bean}.*V60`))
     await row.locator('a').first().click()
 
     // Should be on detail page showing all brew info
@@ -30,10 +27,7 @@ test.describe('Browsing Brews', () => {
     await page.click('button:has-text("Log brew")')
     await page.waitForURL(/\/brews$/)
 
-    const row = page.locator('table tbody tr').filter({
-      hasText: new RegExp(`${testBrewData.valid.bean}.*V60`)
-    })
-    await row.waitFor({ state: 'visible', timeout: 5000 })
+    const row = await findBrewRowAcrossPages(page, new RegExp(`${testBrewData.valid.bean}.*V60`))
     await row.locator('a').first().click()
     await page.waitForURL(/\/brew\/\w+/)
 

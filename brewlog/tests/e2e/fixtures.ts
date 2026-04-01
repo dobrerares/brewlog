@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test'
+import { expect, Page } from '@playwright/test'
 
 export const testBrewData = {
   valid: {
@@ -98,9 +98,38 @@ export async function fillBrewForm(page: Page, brew: typeof testBrewData.valid) 
 export async function navigateToNewBrewForm(page: Page) {
   await page.goto('/brew/new')
   await page.waitForURL(/\/brew\/new$/)
+  await dismissCookieBanner(page)
 }
 
 export async function navigateToBrewList(page: Page) {
   await page.goto('/brews')
   await page.waitForLoadState('networkidle')
+  await dismissCookieBanner(page)
+}
+
+export async function dismissCookieBanner(page: Page) {
+  const acceptButton = page.getByRole('button', { name: 'Accept' })
+  if (await acceptButton.isVisible({ timeout: 1500 }).catch(() => false)) {
+    await acceptButton.click()
+  }
+}
+
+export async function findBrewRowAcrossPages(page: Page, pattern: RegExp, maxPages = 6) {
+  for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
+    const row = page.locator('table tbody tr').filter({ hasText: pattern }).first()
+    if (await row.count()) {
+      await expect(row).toBeVisible()
+      return row
+    }
+
+    const nextButton = page.getByRole('button', { name: 'Next \u2192' })
+    if (!(await nextButton.isVisible().catch(() => false)) || await nextButton.isDisabled()) {
+      break
+    }
+
+    await nextButton.click()
+    await expect(page.locator('table')).toBeVisible()
+  }
+
+  throw new Error(`Unable to find brew row matching ${pattern.toString()} across paginated list`)
 }
