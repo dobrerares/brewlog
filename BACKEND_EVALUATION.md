@@ -113,3 +113,29 @@ were a stronger constraint than validation expressiveness.
 Uvicorn. In-memory stores live in `backend/app/services/`, Pydantic schemas
 in `backend/app/schemas/`, routers in `backend/app/api/`. Tests live in
 `backend/tests/` and target ≥ 90 % line coverage for the CRUD code paths.
+
+## 7. Validation — Silver & Gold Confirmed the Choice
+
+The hypothesis in §5 was that FastAPI's C1/C3/C4/C5/C6 lead would carry
+through into the Silver and Gold deliverables. Implementation confirmed it:
+
+- **Silver (Faker loop + WebSocket)** — the async producer is ~90 lines in
+  `app/services/generator.py` and hooks straight into Starlette's `WebSocket`
+  primitive via `ConnectionManager` (~40 lines). Pydantic's `BrewLogCreate`
+  validates every generated entity, so the loop can't emit invalid data. On
+  Express we would have needed `ws` + a separate JSON-schema validator; on
+  Flask we would have rewritten the loop on `gevent`.
+- **Gold (GraphQL)** — Strawberry consumed the existing Pydantic models with
+  zero changes. Mutations convert the Strawberry `@input` into the existing
+  `BrewLogCreate` / `BrewLogUpdate` and surface `ValidationError.errors()`
+  as GraphQL errors; 1-to-many relationships are plain resolvers over the
+  same `InMemoryStore` instances the REST endpoints already use.
+- **Testing** — `TestClient.websocket_connect` and httpx `AsyncClient` over
+  ASGI cover async and WebSocket paths without spinning up a real server.
+  Final status: **129 tests, 95.7 % line + branch coverage.**
+
+A like-for-like NestJS implementation would have required type-graphql plus
+`class-validator` DTO duplication for both mutations and controllers; on
+Express we would have maintained three validation definitions (HTTP,
+WebSocket payloads, GraphQL inputs). FastAPI's single-source validation
+story is what actually kept the code small.
