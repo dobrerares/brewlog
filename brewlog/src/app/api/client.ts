@@ -173,6 +173,31 @@ export async function generatorStatus(): Promise<{
 }
 
 /**
+ * Fetch a valid reference set (any bean + any brewer + any grinder) so the UI
+ * can populate a quick-create form without asking the user to pick every FK.
+ * Used by the 1-to-many Live view's "Add brew" action.
+ */
+export async function fetchRefs(): Promise<{
+  beanId: string | null
+  brewerId: string | null
+  grinderId: string | null
+}> {
+  const [beans, equipment] = await Promise.all([
+    request<{ items: Array<{ id: string }> }>('/api/v1/beans?page_size=1'),
+    request<{ items: Array<{ id: string; type: string }> }>(
+      '/api/v1/equipment?page_size=50'
+    ),
+  ])
+  const brewer = equipment.items.find((e) => e.type === 'Brewer') ?? null
+  const grinder = equipment.items.find((e) => e.type === 'Grinder') ?? null
+  return {
+    beanId: beans.items[0]?.id ?? null,
+    brewerId: brewer?.id ?? null,
+    grinderId: grinder?.id ?? null,
+  }
+}
+
+/**
  * Dispatch a mutation. When offline, the call is transparently queued for
  * replay the next time the network returns.
  */
