@@ -55,6 +55,7 @@ export function Navbar({ type = 'landing' }: NavbarProps) {
 
   const navLinks = [
     { path: '/brews', label: 'Brew Logs' },
+    { path: '/live', label: 'Live' },
     { path: '/dashboard', label: 'Dashboard' },
   ]
 

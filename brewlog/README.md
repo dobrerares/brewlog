@@ -2,7 +2,27 @@
 
 A coffee brewing journal built with React, TypeScript, and Tailwind CSS. Track every brew with precision — log beans, equipment, parameters, and taste notes. Visualize your brewing patterns with interactive charts that update live as you add, edit, or delete entries.
 
-Built for **Systems for Design and Implementation: Assignment 1** (Bronze + Silver + Gold challenges).
+Built for **Systems for Design and Implementation: Assignments 1 + 2** (Bronze + Silver + Gold).
+
+For the backend REST + GraphQL server and the framework-selection writeup see
+[`../backend/`](../backend/) and [`../BACKEND_EVALUATION.md`](../BACKEND_EVALUATION.md).
+
+## Assignment 2 additions
+
+| Feature | Where it lives | Purpose |
+|---------|----------------|---------|
+| Offline detection + queue replay | `src/app/api/offlineQueue.ts`, `src/app/hooks/useOnlineStatus.ts` | Silver — CRUD operations queue while the network / server is down and auto-sync on reconnect |
+| WebSocket subscription | `src/app/hooks/useBrewSocket.ts` | Silver — receives `brewlog.batch` frames from the backend Faker loop |
+| Generator control panel | `src/app/components/GeneratorControls.tsx` | Silver — start/stop the server-side Faker loop |
+| Offline banner | `src/app/components/OfflineBanner.tsx` | Silver — shows offline / syncing / online state |
+| REST + GraphQL client | `src/app/api/client.ts` | Shared pagination + mutation helpers |
+| Infinite-scroll hook | `src/app/hooks/useInfiniteBrewLogs.ts` | Gold — server-paginated infinite scroll with one-page prefetch and live-batch merge |
+| Live page | `src/app/pages/LiveBrews.tsx` | Combines all of the above and exposes the 1-to-many Bean → BrewLogs relationship in a side-by-side view (list + per-bean stats) |
+
+The Live page is reachable at `/live` and is linked from the in-app navbar.
+It expects the backend from `../backend/` running on `http://localhost:8000`
+(override with `VITE_API_BASE`). The existing in-memory pages (`/brews`,
+`/dashboard`, etc.) still run standalone without the backend.
 
 ## Tech Stack
 
