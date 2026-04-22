@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--cov=app",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=90",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = ["app/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
