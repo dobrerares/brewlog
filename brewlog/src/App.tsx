@@ -7,6 +7,7 @@ import { BrewList } from './app/pages/BrewList'
 import { BrewDetail } from './app/pages/BrewDetail'
 import { BrewForm } from './app/pages/BrewForm'
 import { Statistics } from './app/pages/Statistics'
+import { LiveBrews } from './app/pages/LiveBrews'
 import { CookieConsent } from './app/components/CookieConsent'
 import './index.css'
 
@@ -44,6 +45,7 @@ function AnimatedRoutes() {
         <Route path="/brew/:id" element={<BrewDetail />} />
         <Route path="/brew/:id/edit" element={<BrewForm />} />
         <Route path="/dashboard" element={<Statistics />} />
+        <Route path="/live" element={<LiveBrews />} />
       </Routes>
     </div>
   )
