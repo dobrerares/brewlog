@@ -14,3 +14,14 @@ strawberry-graphql[fastapi]==0.246.2
 pytest==8.3.3
 pytest-asyncio==0.24.0
 pytest-cov==5.0.0
+
+# Assignment 3 — Persistence
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+passlib[bcrypt]==1.7.4
+motor==3.6.0
+pymongo==4.9.2
+
+# A3 — test infra
+testcontainers[postgres,mongodb]==4.8.2
