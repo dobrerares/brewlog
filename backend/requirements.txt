@@ -20,6 +20,7 @@ sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 alembic==1.14.0
 passlib[bcrypt]==1.7.4
+bcrypt<4
 motor==3.6.0
 pymongo==4.9.2
 
