@@ -1,51 +1,85 @@
-"""WebSocket connection manager — fan-out JSON messages to every client.
+"""Topic-based fan-out manager. Replaces the global ConnectionManager from A2.
 
-Kept deliberately simple: no rooms, no auth. Listeners subscribe by opening a
-WebSocket to `/ws`; the generator service pushes `{"type": "...", "data": ...}`
-envelopes through `broadcast()`.
+Subscribers register against a topic string; publishes are scoped to that topic.
+A failing send is dropped silently (treats the socket as disconnected) so one
+bad client cannot stop a broadcast.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any
-
-from fastapi import WebSocket
+from typing import Any, Protocol
 
 
-class ConnectionManager:
+class _SocketLike(Protocol):
+    async def send_json(self, data: Any) -> None: ...
+
+
+class BroadcastManager:
     def __init__(self) -> None:
-        self._connections: set[WebSocket] = set()
+        self._subs: dict[str, set[_SocketLike]] = {}
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket) -> None:
-        await websocket.accept()
+    async def subscribe(self, topic: str, socket: _SocketLike) -> None:
         async with self._lock:
-            self._connections.add(websocket)
+            self._subs.setdefault(topic, set()).add(socket)
 
-    async def disconnect(self, websocket: WebSocket) -> None:
+    async def unsubscribe(self, topic: str, socket: _SocketLike) -> None:
         async with self._lock:
-            self._connections.discard(websocket)
+            self._subs.get(topic, set()).discard(socket)
+            if not self._subs.get(topic):
+                self._subs.pop(topic, None)
+
+    async def unsubscribe_all(self, socket: _SocketLike) -> None:
+        async with self._lock:
+            for topic in list(self._subs.keys()):
+                self._subs[topic].discard(socket)
+                if not self._subs[topic]:
+                    self._subs.pop(topic, None)
+
+    async def publish(self, topic: str, payload: dict) -> None:
+        async with self._lock:
+            sockets = list(self._subs.get(topic, set()))
+        for s in sockets:
+            try:
+                await s.send_json(payload)
+            except Exception:  # noqa: BLE001
+                # Socket is dead; remove it so it stops receiving.
+                async with self._lock:
+                    self._subs.get(topic, set()).discard(s)
+
+
+# Singleton broadcaster shared between WS handler and chat service.
+broadcaster = BroadcastManager()
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compat shim — keeps A2 callers (state.py, generator.py,
+# websocket.py) working until Task 33 rewrites them.
+# ---------------------------------------------------------------------------
+
+_GLOBAL_TOPIC = "__global__"
+
+
+class ConnectionManager(BroadcastManager):
+    """Drop-in replacement for the old global ConnectionManager.
+
+    Wraps the topic-based API under the single ``_GLOBAL_TOPIC`` topic so
+    that pre-Task-33 callers continue to work without modification.
+
+    Will be removed when websocket.py and generator.py are ported (Task 33).
+    """
+
+    async def connect(self, websocket: Any) -> None:
+        await websocket.accept()
+        await self.subscribe(_GLOBAL_TOPIC, websocket)
+
+    async def disconnect(self, websocket: Any) -> None:
+        await self.unsubscribe(_GLOBAL_TOPIC, websocket)
 
     async def broadcast(self, message: dict[str, Any]) -> None:
-        """Send a JSON message to every connected client.
-
-        Connections that fail to accept the message are removed silently —
-        they will reconnect or not on their own.
-        """
-        async with self._lock:
-            targets = list(self._connections)
-        dead: list[WebSocket] = []
-        for ws in targets:
-            try:
-                await ws.send_json(message)
-            except Exception:  # pragma: no cover — connection already closed
-                dead.append(ws)
-        if dead:
-            async with self._lock:
-                for ws in dead:
-                    self._connections.discard(ws)
+        await self.publish(_GLOBAL_TOPIC, message)
 
     @property
     def connection_count(self) -> int:
-        return len(self._connections)
+        return len(self._subs.get(_GLOBAL_TOPIC, set()))

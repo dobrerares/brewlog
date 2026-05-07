@@ -1,16 +1,29 @@
-"""Integration tests for /api/v1/stats/brewlogs."""
+"""Integration tests for /api/v1/stats/brewlogs — SQL-aggregation backed, auth-gated."""
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+from datetime import datetime, timezone
+from decimal import Decimal
+from uuid import UUID
 
-from tests.conftest import make_bean, make_brewer, make_brewlog, make_grinder
+import pytest
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models import Bean, Brewlog, Equipment
 
 
-def test_stats_empty_collection(client: TestClient) -> None:
-    response = client.get("/api/v1/stats/brewlogs")
-    assert response.status_code == 200
-    body = response.json()
+async def _get_user_id(client: AsyncClient) -> UUID:
+    r = await client.get("/api/v1/auth/me")
+    assert r.status_code == 200, r.text
+    return UUID(r.json()["id"])
+
+
+async def test_stats_empty_state(logged_in_client: AsyncClient) -> None:
+    """With no brewlogs present the endpoint returns zeroed/null fields."""
+    r = await logged_in_client.get("/api/v1/stats/brewlogs")
+    assert r.status_code == 200
+    body = r.json()
     assert body == {
         "total_brews": 0,
         "average_rating": None,
@@ -21,41 +34,95 @@ def test_stats_empty_collection(client: TestClient) -> None:
     }
 
 
-def test_stats_aggregates_correctly(client: TestClient) -> None:
-    bean = make_bean(client)
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
-    refs = dict(bean_id=bean["id"], equipment_id=brewer["id"], grinder_id=grinder["id"])
+# ────────────────────────── helpers ──────────────────────────────────────────
 
-    make_brewlog(client, **refs, method="V60", rating=4, taste_result="Balanced")
-    make_brewlog(client, **refs, method="V60", rating=5, taste_result="Balanced")
-    make_brewlog(
-        client,
-        **refs,
-        method="V60",
-        rating=2,
-        taste_result="Sour",
-        notes="under-extracted",
+
+async def _insert_bean(db: AsyncSession, user_id: UUID) -> UUID:
+    bean = Bean(
+        user_id=user_id,
+        name="Test Bean",
+        origin_country="Colombia",
+        process="Washed",
+        roast_level="Light",
     )
-    make_brewlog(
-        client,
-        **refs,
-        method="Espresso",
-        dose_g="18",
-        water_g="36",
-        water_temp_c=93,
-        brew_time_s=30,
-        yield_g="34",
-        rating=3,
-        taste_result="Astringent",
-        notes=None,
+    db.add(bean)
+    await db.flush()
+    return bean.id
+
+
+async def _insert_equipment(db: AsyncSession, user_id: UUID, eq_type: str, name: str) -> UUID:
+    eq = Equipment(
+        user_id=user_id,
+        name=name,
+        type=eq_type,
+        brand="TestBrand",
+        model="X1",
+    )
+    db.add(eq)
+    await db.flush()
+    return eq.id
+
+
+def _brewlog(
+    user_id: UUID,
+    bean_id: UUID,
+    equipment_id: UUID,
+    grinder_id: UUID,
+    *,
+    method: str,
+    rating: int,
+    taste_result: str | None = None,
+) -> Brewlog:
+    return Brewlog(
+        user_id=user_id,
+        bean_id=bean_id,
+        equipment_id=equipment_id,
+        grinder_id=grinder_id,
+        date=datetime(2026, 4, 1, 8, 30, tzinfo=timezone.utc),
+        grind_setting="22 clicks",
+        method=method,
+        dose_g=Decimal("15.0"),
+        water_g=Decimal("250.0"),
+        water_temp_c=94,
+        brew_time_s=150,
+        rating=rating,
+        taste_result=taste_result,
     )
 
-    response = client.get("/api/v1/stats/brewlogs")
-    body = response.json()
+
+# ────────────────────────── aggregation tests ────────────────────────────────
+
+
+async def test_stats_aggregates_correctly(
+    logged_in_client: AsyncClient, db: AsyncSession
+) -> None:
+    """Stats endpoint aggregates method/taste counts and ratios correctly."""
+    user_id = await _get_user_id(logged_in_client)
+    bean_id = await _insert_bean(db, user_id)
+    brewer_id = await _insert_equipment(db, user_id, "Brewer", "Hario V60")
+    grinder_id = await _insert_equipment(db, user_id, "Grinder", "Comandante C40")
+
+    # 3× V60, 1× Espresso; tastes: Balanced×2, Sour×1, Astringent×1
+    rows = [
+        _brewlog(user_id, bean_id, brewer_id, grinder_id, method="V60", rating=4, taste_result="Balanced"),
+        _brewlog(user_id, bean_id, brewer_id, grinder_id, method="V60", rating=5, taste_result="Balanced"),
+        _brewlog(user_id, bean_id, brewer_id, grinder_id, method="V60", rating=2, taste_result="Sour"),
+        _brewlog(
+            user_id, bean_id, brewer_id, grinder_id,
+            method="Espresso", rating=3, taste_result="Astringent",
+        ),
+    ]
+    for row in rows:
+        db.add(row)
+    await db.flush()
+
+    r = await logged_in_client.get("/api/v1/stats/brewlogs")
+    assert r.status_code == 200
+    body = r.json()
+
     assert body["total_brews"] == 4
     assert body["most_used_method"] == "V60"
-    # (4+5+2+3)/4 == 3.5
+    # (4 + 5 + 2 + 3) / 4 == 3.5
     assert body["average_rating"] == 3.5
 
     methods = {entry["method"]: entry["count"] for entry in body["by_method"]}
@@ -64,5 +131,52 @@ def test_stats_aggregates_correctly(client: TestClient) -> None:
     tastes = {entry["taste_result"]: entry["count"] for entry in body["by_taste"]}
     assert tastes == {"Balanced": 2, "Sour": 1, "Astringent": 1}
 
-    # 2 balanced out of 4 rated brews
+    # 2 balanced out of 4 rated
     assert body["balanced_ratio"] == 0.5
+
+
+async def test_stats_no_taste_results(
+    logged_in_client: AsyncClient, db: AsyncSession
+) -> None:
+    """When no brewlog has a taste_result, by_taste is empty and balanced_ratio is None."""
+    user_id = await _get_user_id(logged_in_client)
+    bean_id = await _insert_bean(db, user_id)
+    brewer_id = await _insert_equipment(db, user_id, "Brewer", "AeroPress Brewer")
+    grinder_id = await _insert_equipment(db, user_id, "Grinder", "Hand Grinder")
+
+    db.add(_brewlog(user_id, bean_id, brewer_id, grinder_id, method="AeroPress", rating=4, taste_result=None))
+    db.add(_brewlog(user_id, bean_id, brewer_id, grinder_id, method="AeroPress", rating=3, taste_result=None))
+    await db.flush()
+
+    r = await logged_in_client.get("/api/v1/stats/brewlogs")
+    assert r.status_code == 200
+    body = r.json()
+
+    assert body["total_brews"] == 2
+    assert body["by_taste"] == []
+    assert body["balanced_ratio"] is None
+    assert body["most_used_method"] == "AeroPress"
+
+
+async def test_stats_all_balanced(
+    logged_in_client: AsyncClient, db: AsyncSession
+) -> None:
+    """When all rated brews are Balanced the ratio is 1.0."""
+    user_id = await _get_user_id(logged_in_client)
+    bean_id = await _insert_bean(db, user_id)
+    brewer_id = await _insert_equipment(db, user_id, "Brewer", "Chemex")
+    grinder_id = await _insert_equipment(db, user_id, "Grinder", "Baratza")
+
+    for _ in range(3):
+        db.add(
+            _brewlog(user_id, bean_id, brewer_id, grinder_id, method="Chemex", rating=5, taste_result="Balanced")
+        )
+    await db.flush()
+
+    r = await logged_in_client.get("/api/v1/stats/brewlogs")
+    assert r.status_code == 200
+    body = r.json()
+
+    assert body["total_brews"] == 3
+    assert body["balanced_ratio"] == 1.0
+    assert body["average_rating"] == 5.0

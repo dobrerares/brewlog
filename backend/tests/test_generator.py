@@ -12,8 +12,8 @@ from app.main import app
 from app.services import get_state
 
 
-def test_status_reports_idle_on_boot(client: TestClient) -> None:
-    response = client.get("/api/v1/generator/status")
+def test_status_reports_idle_on_boot(sync_client: TestClient) -> None:
+    response = sync_client.get("/api/v1/generator/status")
     assert response.status_code == 200
     body = response.json()
     assert body["running"] is False
@@ -21,33 +21,33 @@ def test_status_reports_idle_on_boot(client: TestClient) -> None:
     assert body["items_emitted"] == 0
 
 
-def test_stop_before_start_returns_409(client: TestClient) -> None:
-    response = client.post("/api/v1/generator/stop")
+def test_stop_before_start_returns_409(sync_client: TestClient) -> None:
+    response = sync_client.post("/api/v1/generator/stop")
     assert response.status_code == 409
 
 
-def test_start_validates_payload(client: TestClient) -> None:
-    response = client.post(
+def test_start_validates_payload(sync_client: TestClient) -> None:
+    response = sync_client.post(
         "/api/v1/generator/start", json={"batch_size": 0, "interval_s": 1}
     )
     assert response.status_code == 422
-    response = client.post(
+    response = sync_client.post(
         "/api/v1/generator/start", json={"batch_size": 2, "interval_s": 0}
     )
     assert response.status_code == 422
 
 
-def test_tick_emits_a_single_batch(client: TestClient) -> None:
-    response = client.post("/api/v1/generator/tick")
+def test_tick_emits_a_single_batch(sync_client: TestClient) -> None:
+    response = sync_client.post("/api/v1/generator/tick")
     assert response.status_code == 200
     body = response.json()
     assert body["count"] >= 1
     # The batch populates brewlogs and their prerequisites.
-    assert client.get("/api/v1/brewlogs").json()["total"] == body["count"]
+    assert sync_client.get("/api/v1/brewlogs").json()["total"] == body["count"]
     # Prereqs: one roaster + one bean + one brewer + one grinder.
-    assert client.get("/api/v1/roasters").json()["total"] == 1
-    assert client.get("/api/v1/beans").json()["total"] == 1
-    assert client.get("/api/v1/equipment").json()["total"] == 2
+    assert sync_client.get("/api/v1/roasters").json()["total"] == 1
+    assert sync_client.get("/api/v1/beans").json()["total"] == 1
+    assert sync_client.get("/api/v1/equipment").json()["total"] == 2
 
 
 @pytest.mark.asyncio
@@ -73,10 +73,10 @@ async def test_start_and_stop_cycle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_emit_once_broadcasts_to_websocket_clients(client: TestClient) -> None:
+async def test_emit_once_broadcasts_to_websocket_clients(sync_client: TestClient) -> None:
     # Connect, call /tick which emits a batch, then receive the broadcast.
-    with client.websocket_connect("/ws") as ws:
-        response = client.post("/api/v1/generator/tick")
+    with sync_client.websocket_connect("/ws") as ws:
+        response = sync_client.post("/api/v1/generator/tick")
         assert response.status_code == 200
         emitted = response.json()["count"]
 
@@ -89,29 +89,29 @@ async def test_emit_once_broadcasts_to_websocket_clients(client: TestClient) -> 
         assert "id" in first and "method" in first and "rating" in first
 
 
-def test_generator_reuses_existing_seed_entities(client: TestClient) -> None:
+def test_generator_reuses_existing_seed_entities(sync_client: TestClient) -> None:
     # Seed a roaster manually first — the generator should not duplicate it.
-    manual = client.post("/api/v1/roasters", json={"name": "Already here"}).json()
-    client.post("/api/v1/generator/tick")
-    roasters = client.get("/api/v1/roasters").json()
+    manual = sync_client.post("/api/v1/roasters", json={"name": "Already here"}).json()
+    sync_client.post("/api/v1/generator/tick")
+    roasters = sync_client.get("/api/v1/roasters").json()
     assert roasters["total"] == 1
     assert roasters["items"][0]["id"] == manual["id"]
 
 
-def test_broadcast_drops_dead_connections(client: TestClient) -> None:
+def test_broadcast_drops_dead_connections(sync_client: TestClient) -> None:
     # After disconnecting, the manager should clean up its connection set.
     state = get_state()
-    with client.websocket_connect("/ws"):
+    with sync_client.websocket_connect("/ws"):
         assert state.broadcaster.connection_count == 1
     # Allow the disconnect handler to run by triggering another op.
-    client.post("/api/v1/generator/tick")
+    sync_client.post("/api/v1/generator/tick")
     assert state.broadcaster.connection_count == 0
 
 
-def test_ws_survives_client_text_messages(client: TestClient) -> None:
+def test_ws_survives_client_text_messages(sync_client: TestClient) -> None:
     # Clients may send keep-alive pings; the handler just reads and ignores.
-    with client.websocket_connect("/ws") as ws:
+    with sync_client.websocket_connect("/ws") as ws:
         ws.send_text(json.dumps({"ping": True}))
-        client.post("/api/v1/generator/tick")
+        sync_client.post("/api/v1/generator/tick")
         message = ws.receive_json()
         assert message["type"] == "brewlog.batch"

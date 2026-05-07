@@ -1,14 +1,12 @@
-"""Gold challenge tests: GraphQL queries + mutations + 1-to-many relationships."""
+"""GraphQL queries + mutations + 1-to-many relationships — DB-backed."""
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
-from tests.conftest import make_bean, make_brewer, make_brewlog, make_grinder, make_roaster
+from httpx import AsyncClient
 
 
-def _gql(client: TestClient, query: str, variables: dict | None = None) -> dict:
-    response = client.post(
+async def _gql(client: AsyncClient, query: str, variables: dict | None = None) -> dict:
+    response = await client.post(
         "/graphql",
         json={"query": query, "variables": variables or {}},
     )
@@ -16,11 +14,117 @@ def _gql(client: TestClient, query: str, variables: dict | None = None) -> dict:
     return response.json()
 
 
+# --- async factory helpers ------------------------------------------------
+
+
+async def make_roaster(client: AsyncClient, **overrides: object) -> dict:
+    payload = {
+        "name": "Nomad Coffee",
+        "location": "Barcelona",
+        "website": None,
+        "notes": None,
+    }
+    payload.update(overrides)
+    response = await client.post("/api/v1/roasters", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def make_bean(
+    client: AsyncClient,
+    roaster_id: str | None = None,
+    **overrides: object,
+) -> dict:
+    payload: dict[str, object] = {
+        "name": "Finca La Esperanza",
+        "roaster_id": roaster_id,
+        "origin_country": "Colombia",
+        "origin_region": "Huila",
+        "process": "Washed",
+        "roast_level": "Light",
+        "variety": "Caturra",
+        "elevation_m": 1800,
+        "tasting_notes": ["chocolate", "citrus"],
+        "purchase_date": "2026-03-01",
+        "price": "18.50",
+    }
+    payload.update(overrides)
+    response = await client.post("/api/v1/beans", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def make_brewer(client: AsyncClient, **overrides: object) -> dict:
+    payload: dict[str, object] = {
+        "name": "Hario V60",
+        "type": "Brewer",
+        "brand": "Hario",
+        "model": "02",
+        "grind_type": None,
+        "grind_range": None,
+        "grind_unit": None,
+        "notes": None,
+    }
+    payload.update(overrides)
+    response = await client.post("/api/v1/equipment", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def make_grinder(client: AsyncClient, **overrides: object) -> dict:
+    payload: dict[str, object] = {
+        "name": "Comandante C40",
+        "type": "Grinder",
+        "brand": "Comandante",
+        "model": "MK4",
+        "grind_type": "Stepped",
+        "grind_range": "clicks 0-40",
+        "grind_unit": "1 click",
+        "notes": None,
+    }
+    payload.update(overrides)
+    response = await client.post("/api/v1/equipment", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def make_brewlog(
+    client: AsyncClient,
+    bean_id: str,
+    equipment_id: str,
+    grinder_id: str,
+    **overrides: object,
+) -> dict:
+    payload: dict[str, object] = {
+        "date": "2026-04-01T08:30:00",
+        "bean_id": bean_id,
+        "equipment_id": equipment_id,
+        "grinder_id": grinder_id,
+        "grind_setting": "22 clicks",
+        "method": "V60",
+        "dose_g": "15",
+        "water_g": "250",
+        "water_temp_c": 94,
+        "brew_time_s": 150,
+        "yield_g": None,
+        "rating": 4,
+        "taste_result": "Balanced",
+        "grind_adjustment": None,
+        "tasting_notes": ["chocolate"],
+        "notes": "Solid pourover.",
+        "photo_url": None,
+    }
+    payload.update(overrides)
+    response = await client.post("/api/v1/brewlogs", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 # --- schema / query smoke ------------------------------------------------
 
 
-def test_schema_exposes_root_queries(client: TestClient) -> None:
-    body = _gql(
+async def test_schema_exposes_root_queries(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         {
@@ -32,11 +136,11 @@ def test_schema_exposes_root_queries(client: TestClient) -> None:
     assert {"roasters", "beans", "equipmentList", "brewlogs", "brewStats"} <= names
 
 
-def test_paginated_queries_cover_every_resource(client: TestClient) -> None:
-    make_roaster(client)
-    make_bean(client)
-    make_brewer(client)
-    body = _gql(
+async def test_paginated_queries_cover_every_resource(client: AsyncClient) -> None:
+    await make_roaster(client)
+    await make_bean(client)
+    await make_brewer(client)
+    body = await _gql(
         client,
         """
         {
@@ -51,8 +155,8 @@ def test_paginated_queries_cover_every_resource(client: TestClient) -> None:
     assert body["data"]["equipmentList"]["total"] == 1
 
 
-def test_empty_brewlogs_page(client: TestClient) -> None:
-    body = _gql(
+async def test_empty_brewlogs_page(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         "{ brewlogs { total items { id } page totalPages } }",
     )
@@ -63,8 +167,8 @@ def test_empty_brewlogs_page(client: TestClient) -> None:
 # --- create via mutation, read via query ---------------------------------
 
 
-def test_create_roaster_and_read_back(client: TestClient) -> None:
-    body = _gql(
+async def test_create_roaster_and_read_back(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         mutation ($input: RoasterInput!) {
@@ -76,7 +180,7 @@ def test_create_roaster_and_read_back(client: TestClient) -> None:
     created = body["data"]["createRoaster"]
     assert created["name"] == "Onyx"
 
-    body = _gql(
+    body = await _gql(
         client,
         "{ roasters { total items { id name location } } }",
     )
@@ -84,9 +188,9 @@ def test_create_roaster_and_read_back(client: TestClient) -> None:
     assert body["data"]["roasters"]["items"][0]["id"] == created["id"]
 
 
-def test_create_bean_links_to_roaster(client: TestClient) -> None:
-    roaster = make_roaster(client)
-    body = _gql(
+async def test_create_bean_links_to_roaster(client: AsyncClient) -> None:
+    roaster = await make_roaster(client)
+    body = await _gql(
         client,
         """
         mutation ($input: BeanInput!) {
@@ -107,8 +211,8 @@ def test_create_bean_links_to_roaster(client: TestClient) -> None:
     assert bean["roaster"]["name"] == roaster["name"]
 
 
-def test_mutation_surfaces_validation_errors(client: TestClient) -> None:
-    body = _gql(
+async def test_mutation_surfaces_validation_errors(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         mutation ($input: RoasterInput!) {
@@ -121,8 +225,8 @@ def test_mutation_surfaces_validation_errors(client: TestClient) -> None:
     assert "name" in body["errors"][0]["message"]
 
 
-def test_create_bean_with_unknown_roaster_errors(client: TestClient) -> None:
-    body = _gql(
+async def test_create_bean_with_unknown_roaster_errors(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         mutation ($input: BeanInput!) {
@@ -146,20 +250,20 @@ def test_create_bean_with_unknown_roaster_errors(client: TestClient) -> None:
 # --- Gold "1-to-many": full relationship story in one query --------------
 
 
-def test_one_to_many_relationships(client: TestClient) -> None:
+async def test_one_to_many_relationships(client: AsyncClient) -> None:
     """Roaster → Beans → BrewLogs and Equipment → BrewLogs."""
-    roaster = make_roaster(client, name="R1")
-    bean1 = make_bean(client, roaster_id=roaster["id"], name="Bean 1")
-    bean2 = make_bean(client, roaster_id=roaster["id"], name="Bean 2")
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
+    roaster = await make_roaster(client, name="R1")
+    bean1 = await make_bean(client, roaster_id=roaster["id"], name="Bean 1")
+    bean2 = await make_bean(client, roaster_id=roaster["id"], name="Bean 2")
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
 
     # Two brews on bean1, one on bean2
-    make_brewlog(client, bean1["id"], brewer["id"], grinder["id"])
-    make_brewlog(client, bean1["id"], brewer["id"], grinder["id"])
-    make_brewlog(client, bean2["id"], brewer["id"], grinder["id"])
+    await make_brewlog(client, bean1["id"], brewer["id"], grinder["id"])
+    await make_brewlog(client, bean1["id"], brewer["id"], grinder["id"])
+    await make_brewlog(client, bean2["id"], brewer["id"], grinder["id"])
 
-    body = _gql(
+    body = await _gql(
         client,
         """
         query ($id: UUID!) {
@@ -181,7 +285,7 @@ def test_one_to_many_relationships(client: TestClient) -> None:
     assert len(beans["Bean 2"]["brewlogs"]) == 1
 
     # Equipment → brewlogs resolver
-    body = _gql(
+    body = await _gql(
         client,
         """
         query ($id: UUID!) {
@@ -193,14 +297,14 @@ def test_one_to_many_relationships(client: TestClient) -> None:
     assert len(body["data"]["equipment"]["brewlogs"]) == 3
 
 
-def test_brewlog_nested_entities_resolve(client: TestClient) -> None:
-    roaster = make_roaster(client, name="R")
-    bean = make_bean(client, roaster_id=roaster["id"], name="B")
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
-    brew = make_brewlog(client, bean["id"], brewer["id"], grinder["id"])
+async def test_brewlog_nested_entities_resolve(client: AsyncClient) -> None:
+    roaster = await make_roaster(client, name="R")
+    bean = await make_bean(client, roaster_id=roaster["id"], name="B")
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
+    brew = await make_brewlog(client, bean["id"], brewer["id"], grinder["id"])
 
-    body = _gql(
+    body = await _gql(
         client,
         """
         query ($id: UUID!) {
@@ -221,14 +325,14 @@ def test_brewlog_nested_entities_resolve(client: TestClient) -> None:
     assert data["grinder"]["type"] == "GRINDER"
 
 
-def test_brewlogs_query_supports_pagination_and_filter(client: TestClient) -> None:
-    bean = make_bean(client)
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
+async def test_brewlogs_query_supports_pagination_and_filter(client: AsyncClient) -> None:
+    bean = await make_bean(client)
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
     for _ in range(5):
-        make_brewlog(client, bean["id"], brewer["id"], grinder["id"])
+        await make_brewlog(client, bean["id"], brewer["id"], grinder["id"])
 
-    body = _gql(
+    body = await _gql(
         client,
         """
         query { brewlogs(page: 2, pageSize: 2, method: V60) {
@@ -248,11 +352,11 @@ def test_brewlogs_query_supports_pagination_and_filter(client: TestClient) -> No
 # --- Update & delete mutations ------------------------------------------
 
 
-def test_update_and_delete_via_graphql(client: TestClient) -> None:
-    roaster = make_roaster(client)
-    bean = make_bean(client, roaster_id=roaster["id"])
+async def test_update_and_delete_via_graphql(client: AsyncClient) -> None:
+    roaster = await make_roaster(client)
+    bean = await make_bean(client, roaster_id=roaster["id"])
 
-    updated = _gql(
+    updated = await _gql(
         client,
         """
         mutation ($id: UUID!, $input: BeanPatch!) {
@@ -263,7 +367,7 @@ def test_update_and_delete_via_graphql(client: TestClient) -> None:
     )
     assert updated["data"]["updateBean"]["roastLevel"] == "DARK"
 
-    body = _gql(
+    body = await _gql(
         client,
         "mutation ($id: UUID!) { deleteBean(id: $id) }",
         {"id": bean["id"]},
@@ -271,7 +375,7 @@ def test_update_and_delete_via_graphql(client: TestClient) -> None:
     assert body["data"]["deleteBean"] is True
 
     # Second delete is a no-op returning False, not an exception.
-    body = _gql(
+    body = await _gql(
         client,
         "mutation ($id: UUID!) { deleteBean(id: $id) }",
         {"id": bean["id"]},
@@ -279,15 +383,15 @@ def test_update_and_delete_via_graphql(client: TestClient) -> None:
     assert body["data"]["deleteBean"] is False
 
 
-def test_brewlog_update_revalidates_business_rules(client: TestClient) -> None:
-    bean = make_bean(client)
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
-    brew = make_brewlog(
+async def test_brewlog_update_revalidates_business_rules(client: AsyncClient) -> None:
+    bean = await make_bean(client)
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
+    brew = await make_brewlog(
         client, bean["id"], brewer["id"], grinder["id"], rating=4, taste_result="Balanced"
     )
 
-    body = _gql(
+    body = await _gql(
         client,
         """
         mutation ($id: UUID!, $input: BrewLogPatch!) {
@@ -300,8 +404,8 @@ def test_brewlog_update_revalidates_business_rules(client: TestClient) -> None:
     assert "notes" in body["errors"][0]["message"]
 
 
-def test_update_unknown_entity_returns_graphql_error(client: TestClient) -> None:
-    body = _gql(
+async def test_update_unknown_entity_returns_graphql_error(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         mutation ($id: UUID!, $input: RoasterPatch!) {
@@ -313,8 +417,8 @@ def test_update_unknown_entity_returns_graphql_error(client: TestClient) -> None
     assert "errors" in body
 
 
-def test_unknown_single_entity_returns_null(client: TestClient) -> None:
-    body = _gql(
+async def test_unknown_single_entity_returns_null(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         "query ($id: UUID!) { roaster(id: $id) { id } }",
         {"id": "00000000-0000-0000-0000-000000000000"},
@@ -322,14 +426,14 @@ def test_unknown_single_entity_returns_null(client: TestClient) -> None:
     assert body["data"]["roaster"] is None
 
 
-def test_brew_stats_aggregates_via_graphql(client: TestClient) -> None:
-    bean = make_bean(client)
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
-    make_brewlog(client, bean["id"], brewer["id"], grinder["id"], rating=5)
-    make_brewlog(client, bean["id"], brewer["id"], grinder["id"], rating=3)
+async def test_brew_stats_aggregates_via_graphql(client: AsyncClient) -> None:
+    bean = await make_bean(client)
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
+    await make_brewlog(client, bean["id"], brewer["id"], grinder["id"], rating=5)
+    await make_brewlog(client, bean["id"], brewer["id"], grinder["id"], rating=3)
 
-    body = _gql(
+    body = await _gql(
         client,
         """
         {
@@ -351,8 +455,8 @@ def test_brew_stats_aggregates_via_graphql(client: TestClient) -> None:
 # --- Equipment + full CRUD ----------------------------------------------
 
 
-def test_create_update_delete_equipment_via_graphql(client: TestClient) -> None:
-    body = _gql(
+async def test_create_update_delete_equipment_via_graphql(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         mutation ($input: EquipmentInput!) {
@@ -373,7 +477,7 @@ def test_create_update_delete_equipment_via_graphql(client: TestClient) -> None:
     grinder = body["data"]["createEquipment"]
     assert grinder["grindType"] == "STEPPED"
 
-    body = _gql(
+    body = await _gql(
         client,
         """
         mutation ($id: UUID!, $input: EquipmentPatch!) {
@@ -384,7 +488,7 @@ def test_create_update_delete_equipment_via_graphql(client: TestClient) -> None:
     )
     assert body["data"]["updateEquipment"]["model"] == "Gen2"
 
-    body = _gql(
+    body = await _gql(
         client,
         "mutation ($id: UUID!) { deleteEquipment(id: $id) }",
         {"id": grinder["id"]},
@@ -392,10 +496,10 @@ def test_create_update_delete_equipment_via_graphql(client: TestClient) -> None:
     assert body["data"]["deleteEquipment"] is True
 
 
-def test_create_brewlog_with_unknown_bean_errors(client: TestClient) -> None:
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
-    body = _gql(
+async def test_create_brewlog_with_unknown_bean_errors(client: AsyncClient) -> None:
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
+    body = await _gql(
         client,
         """
         mutation ($input: BrewLogInput!) {
@@ -423,8 +527,8 @@ def test_create_brewlog_with_unknown_bean_errors(client: TestClient) -> None:
     assert "bean_id" in body["errors"][0]["message"]
 
 
-def test_update_equipment_unknown_errors(client: TestClient) -> None:
-    body = _gql(
+async def test_update_equipment_unknown_errors(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         mutation ($id: UUID!, $input: EquipmentPatch!) {
@@ -436,8 +540,8 @@ def test_update_equipment_unknown_errors(client: TestClient) -> None:
     assert "errors" in body
 
 
-def test_update_brewlog_unknown_errors(client: TestClient) -> None:
-    body = _gql(
+async def test_update_brewlog_unknown_errors(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         mutation ($id: UUID!, $input: BrewLogPatch!) {
@@ -449,8 +553,8 @@ def test_update_brewlog_unknown_errors(client: TestClient) -> None:
     assert "errors" in body
 
 
-def test_update_bean_unknown_errors(client: TestClient) -> None:
-    body = _gql(
+async def test_update_bean_unknown_errors(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         """
         mutation ($id: UUID!, $input: BeanPatch!) {
@@ -462,8 +566,8 @@ def test_update_bean_unknown_errors(client: TestClient) -> None:
     assert "errors" in body
 
 
-def test_delete_roaster_returns_false_when_unknown(client: TestClient) -> None:
-    body = _gql(
+async def test_delete_roaster_returns_false_when_unknown(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         "mutation ($id: UUID!) { deleteRoaster(id: $id) }",
         {"id": "00000000-0000-0000-0000-000000000000"},
@@ -471,19 +575,19 @@ def test_delete_roaster_returns_false_when_unknown(client: TestClient) -> None:
     assert body["data"]["deleteRoaster"] is False
 
 
-def test_delete_brewlog_via_graphql(client: TestClient) -> None:
-    bean = make_bean(client)
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
-    brew = make_brewlog(client, bean["id"], brewer["id"], grinder["id"])
-    body = _gql(
+async def test_delete_brewlog_via_graphql(client: AsyncClient) -> None:
+    bean = await make_bean(client)
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
+    brew = await make_brewlog(client, bean["id"], brewer["id"], grinder["id"])
+    body = await _gql(
         client,
         "mutation ($id: UUID!) { deleteBrewlog(id: $id) }",
         {"id": brew["id"]},
     )
     assert body["data"]["deleteBrewlog"] is True
     # second delete no-ops
-    body = _gql(
+    body = await _gql(
         client,
         "mutation ($id: UUID!) { deleteBrewlog(id: $id) }",
         {"id": brew["id"]},
@@ -491,8 +595,8 @@ def test_delete_brewlog_via_graphql(client: TestClient) -> None:
     assert body["data"]["deleteBrewlog"] is False
 
 
-def test_delete_equipment_returns_false_when_unknown(client: TestClient) -> None:
-    body = _gql(
+async def test_delete_equipment_returns_false_when_unknown(client: AsyncClient) -> None:
+    body = await _gql(
         client,
         "mutation ($id: UUID!) { deleteEquipment(id: $id) }",
         {"id": "00000000-0000-0000-0000-000000000000"},
@@ -500,9 +604,9 @@ def test_delete_equipment_returns_false_when_unknown(client: TestClient) -> None
     assert body["data"]["deleteEquipment"] is False
 
 
-def test_update_roaster_partial(client: TestClient) -> None:
-    roaster = make_roaster(client)
-    body = _gql(
+async def test_update_roaster_partial(client: AsyncClient) -> None:
+    roaster = await make_roaster(client)
+    body = await _gql(
         client,
         """
         mutation ($id: UUID!, $input: RoasterPatch!) {
@@ -514,9 +618,9 @@ def test_update_roaster_partial(client: TestClient) -> None:
     assert body["data"]["updateRoaster"]["location"] == "Madrid"
 
 
-def test_bean_with_null_roaster_query_path(client: TestClient) -> None:
-    bean = make_bean(client)  # no roaster attached
-    body = _gql(
+async def test_bean_with_null_roaster_query_path(client: AsyncClient) -> None:
+    bean = await make_bean(client)  # no roaster attached
+    body = await _gql(
         client,
         """
         query ($id: UUID!) { bean(id: $id) { name roaster { id } } }
@@ -526,14 +630,14 @@ def test_bean_with_null_roaster_query_path(client: TestClient) -> None:
     assert body["data"]["bean"]["roaster"] is None
 
 
-def test_brewlogs_query_date_range(client: TestClient) -> None:
-    bean = make_bean(client)
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
-    make_brewlog(client, bean["id"], brewer["id"], grinder["id"], date="2026-02-01T08:00:00")
-    make_brewlog(client, bean["id"], brewer["id"], grinder["id"], date="2026-04-01T08:00:00")
+async def test_brewlogs_query_date_range(client: AsyncClient) -> None:
+    bean = await make_bean(client)
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
+    await make_brewlog(client, bean["id"], brewer["id"], grinder["id"], date="2026-02-01T08:00:00")
+    await make_brewlog(client, bean["id"], brewer["id"], grinder["id"], date="2026-04-01T08:00:00")
 
-    body = _gql(
+    body = await _gql(
         client,
         """
         query {
@@ -543,7 +647,7 @@ def test_brewlogs_query_date_range(client: TestClient) -> None:
     )
     assert body["data"]["brewlogs"]["total"] == 1
 
-    body = _gql(
+    body = await _gql(
         client,
         """
         query {
@@ -554,23 +658,23 @@ def test_brewlogs_query_date_range(client: TestClient) -> None:
     assert body["data"]["brewlogs"]["total"] == 1
 
 
-def test_brewlogs_query_all_filters(client: TestClient) -> None:
-    bean1 = make_bean(client, name="B1")
-    bean2 = make_bean(client, name="B2")
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
+async def test_brewlogs_query_all_filters(client: AsyncClient) -> None:
+    bean1 = await make_bean(client, name="B1")
+    bean2 = await make_bean(client, name="B2")
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
 
-    make_brewlog(
+    await make_brewlog(
         client, bean1["id"], brewer["id"], grinder["id"],
         rating=5, taste_result="Balanced",
     )
-    make_brewlog(
+    await make_brewlog(
         client, bean2["id"], brewer["id"], grinder["id"],
         rating=2, taste_result="Sour", notes="under-extracted",
     )
 
     # taste filter
-    body = _gql(
+    body = await _gql(
         client,
         'query { brewlogs(tasteResult: SOUR) { total items { rating } } }',
     )
@@ -578,11 +682,11 @@ def test_brewlogs_query_all_filters(client: TestClient) -> None:
     assert body["data"]["brewlogs"]["items"][0]["rating"] == 2
 
     # rating range
-    body = _gql(client, "query { brewlogs(minRating: 4, maxRating: 5) { total } }")
+    body = await _gql(client, "query { brewlogs(minRating: 4, maxRating: 5) { total } }")
     assert body["data"]["brewlogs"]["total"] == 1
 
     # bean id
-    body = _gql(
+    body = await _gql(
         client,
         "query ($b: UUID!) { brewlogs(beanId: $b) { total } }",
         {"b": bean2["id"]},
@@ -590,10 +694,10 @@ def test_brewlogs_query_all_filters(client: TestClient) -> None:
     assert body["data"]["brewlogs"]["total"] == 1
 
 
-def test_unknown_queries_return_null(client: TestClient) -> None:
+async def test_unknown_queries_return_null(client: AsyncClient) -> None:
     missing = "00000000-0000-0000-0000-000000000000"
     for field in ("bean", "equipment", "brewlog"):
-        body = _gql(
+        body = await _gql(
             client,
             f"query ($id: UUID!) {{ {field}(id: $id) {{ id }} }}",
             {"id": missing},
@@ -601,45 +705,52 @@ def test_unknown_queries_return_null(client: TestClient) -> None:
         assert body["data"][field] is None
 
 
-def test_brewlog_nested_missing_parents_return_null(client: TestClient) -> None:
-    # Create a brewlog, then delete the underlying bean/equipment/grinder to
-    # exercise the "missing parent" resolver branches.
-    bean = make_bean(client)
-    brewer = make_brewer(client)
-    grinder = make_grinder(client)
-    brew = make_brewlog(client, bean["id"], brewer["id"], grinder["id"])
+async def test_brewlog_nested_fields_resolve_when_parents_exist(client: AsyncClient) -> None:
+    # DB enforces RESTRICT FK, so parents can't be deleted while brewlog exists.
+    # This test verifies that the nested field resolvers correctly return
+    # non-null values when all referenced parents are present.
+    bean = await make_bean(client)
+    brewer = await make_brewer(client)
+    grinder = await make_grinder(client)
+    brew = await make_brewlog(client, bean["id"], brewer["id"], grinder["id"])
 
-    client.delete(f"/api/v1/beans/{bean['id']}")
-    client.delete(f"/api/v1/equipment/{brewer['id']}")
-    client.delete(f"/api/v1/equipment/{grinder['id']}")
-
-    body = _gql(
+    body = await _gql(
         client,
         """
         query ($id: UUID!) {
           brewlog(id: $id) {
             id
-            bean { id }
-            equipment { id }
-            grinder { id }
+            bean { id name }
+            equipment { id name }
+            grinder { id name }
           }
         }
         """,
         {"id": brew["id"]},
     )
     data = body["data"]["brewlog"]
-    assert data["bean"] is None
-    assert data["equipment"] is None
-    assert data["grinder"] is None
+    assert data["bean"] is not None
+    assert data["bean"]["id"] == bean["id"]
+    assert data["equipment"] is not None
+    assert data["equipment"]["id"] == brewer["id"]
+    assert data["grinder"] is not None
+    assert data["grinder"]["id"] == grinder["id"]
+    # Verify non-existent brewlog returns None (null resolver path)
+    body2 = await _gql(
+        client,
+        "query ($id: UUID!) { brewlog(id: $id) { id } }",
+        {"id": "00000000-0000-0000-0000-000000000099"},
+    )
+    assert body2["data"]["brewlog"] is None
 
 
-def test_bean_with_missing_roaster_resolver_returns_null(client: TestClient) -> None:
-    roaster = make_roaster(client)
-    bean = make_bean(client, roaster_id=roaster["id"])
+async def test_bean_with_missing_roaster_resolver_returns_null(client: AsyncClient) -> None:
+    roaster = await make_roaster(client)
+    bean = await make_bean(client, roaster_id=roaster["id"])
     # Roaster deletion leaves the bean pointing at a phantom id.
-    client.delete(f"/api/v1/roasters/{roaster['id']}")
+    await client.delete(f"/api/v1/roasters/{roaster['id']}")
 
-    body = _gql(
+    body = await _gql(
         client,
         "query ($id: UUID!) { bean(id: $id) { roaster { id } } }",
         {"id": bean["id"]},

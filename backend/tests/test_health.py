@@ -1,14 +1,14 @@
 from fastapi.testclient import TestClient
 
 
-def test_health_endpoint_reports_ok(client: TestClient) -> None:
-    response = client.get("/health")
+def test_health_endpoint_reports_ok(sync_client: TestClient) -> None:
+    response = sync_client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-def test_openapi_schema_is_served(client: TestClient) -> None:
-    response = client.get("/openapi.json")
+def test_openapi_schema_is_served(sync_client: TestClient) -> None:
+    response = sync_client.get("/openapi.json")
     assert response.status_code == 200
     schema = response.json()
     assert schema["info"]["title"] == "BrewLog API"

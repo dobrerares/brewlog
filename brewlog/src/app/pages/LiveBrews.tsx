@@ -17,6 +17,7 @@ import { Navbar } from '../components/Navbar'
 import { OfflineBanner } from '../components/OfflineBanner'
 import { GeneratorControls } from '../components/GeneratorControls'
 import { StarRating } from '../components/StarRating'
+import { useAuth } from '@/hooks/useAuth'
 import { useInfiniteBrewLogs } from '../hooks/useInfiniteBrewLogs'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useBrewSocket } from '../hooks/useBrewSocket'
@@ -42,6 +43,8 @@ const METHOD_COLORS = ['#8B5A3C', '#C69C6D', '#D9AB72', '#6B4423', '#A0826D', '#
 const RATING_COLORS = ['#d9534f', '#f0ad4e', '#f7e26b', '#83c879', '#2e8b57']
 
 export function LiveBrews() {
+  const { hasPermission } = useAuth()
+  const canControl = hasPermission('generator:control')
   const online = useOnlineStatus()
   const [beans, setBeans] = useState<ServerBean[]>([])
   const [beanId, setBeanId] = useState<string | undefined>(undefined)
@@ -188,7 +191,9 @@ export function LiveBrews() {
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <OfflineBanner online={online} />
-            <GeneratorControls disabled={!online} />
+            <span title={!canControl ? 'Admin only' : undefined}>
+              <GeneratorControls disabled={!online || !canControl} />
+            </span>
           </div>
         </header>
 

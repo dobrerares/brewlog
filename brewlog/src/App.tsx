@@ -9,6 +9,11 @@ import { BrewForm } from './app/pages/BrewForm'
 import { Statistics } from './app/pages/Statistics'
 import { LiveBrews } from './app/pages/LiveBrews'
 import { CookieConsent } from './app/components/CookieConsent'
+import ChatPage from '@/pages/Chat'
+import ObservedUsers from '@/pages/admin/ObservedUsers'
+import AuditLogExplorer from '@/pages/admin/AuditLogExplorer'
+import { RequireAuth } from '@/components/RequireAuth'
+import { RequirePerm } from '@/components/RequirePerm'
 import './index.css'
 
 function AnimatedRoutes() {
@@ -46,6 +51,9 @@ function AnimatedRoutes() {
         <Route path="/brew/:id/edit" element={<BrewForm />} />
         <Route path="/dashboard" element={<Statistics />} />
         <Route path="/live" element={<LiveBrews />} />
+        <Route path="/chat" element={<RequireAuth><ChatPage /></RequireAuth>} />
+        <Route path="/admin/observed" element={<RequirePerm perm="user:observe"><ObservedUsers /></RequirePerm>} />
+        <Route path="/admin/audit" element={<RequirePerm perm="log:read"><AuditLogExplorer /></RequirePerm>} />
       </Routes>
     </div>
   )
