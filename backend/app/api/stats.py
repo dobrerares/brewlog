@@ -1,26 +1,25 @@
-"""Statistics endpoints computed over the brewlog collection."""
+"""Statistics endpoints — SQL-aggregated over the brewlogs table."""
 
 from __future__ import annotations
 
-from collections import Counter
-
 from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas import BrewLog, BrewStats, MethodCount, TasteCount
+from app.api.deps import get_db
+from app.db.models import Brewlog
+from app.schemas import BrewStats, MethodCount, TasteCount
 from app.schemas.common import BrewMethod, TasteResult
-from app.services import InMemoryStore
-
-from .deps import brewlog_store
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
 
 @router.get("/brewlogs", response_model=BrewStats)
-def brewlog_stats(
-    store: InMemoryStore[BrewLog] = Depends(brewlog_store),
+async def brewlog_stats(
+    db: AsyncSession = Depends(get_db),
 ) -> BrewStats:
-    brews = store.list()
-    total = len(brews)
+    total = await db.scalar(select(func.count(Brewlog.id)))
+    total = total or 0
 
     if total == 0:
         return BrewStats(
@@ -32,22 +31,47 @@ def brewlog_stats(
             balanced_ratio=None,
         )
 
-    by_method: Counter[BrewMethod] = Counter(b.method for b in brews)
-    by_taste: Counter[TasteResult] = Counter(
-        b.taste_result for b in brews if b.taste_result is not None
-    )
+    # Average rating
+    raw_avg = await db.scalar(select(func.avg(Brewlog.rating)))
+    avg_rating = round(float(raw_avg), 2) if raw_avg is not None else None
 
-    avg_rating = sum(b.rating for b in brews) / total
-    most_used, _ = by_method.most_common(1)[0]
-    balanced = by_taste.get(TasteResult.BALANCED, 0)
-    rated_count = sum(by_taste.values())
-    balanced_ratio = balanced / rated_count if rated_count else None
+    # By-method breakdown — descending count order
+    method_rows = (
+        await db.execute(
+            select(Brewlog.method, func.count().label("cnt"))
+            .group_by(Brewlog.method)
+            .order_by(func.count().desc())
+        )
+    ).all()
+    by_method = [MethodCount(method=BrewMethod(m), count=c) for m, c in method_rows]
+    most_used_method = by_method[0].method if by_method else None
+
+    # By-taste breakdown — exclude rows with no taste_result
+    taste_rows = (
+        await db.execute(
+            select(Brewlog.taste_result, func.count().label("cnt"))
+            .where(Brewlog.taste_result.is_not(None))
+            .group_by(Brewlog.taste_result)
+            .order_by(func.count().desc())
+        )
+    ).all()
+    by_taste = [TasteCount(taste_result=TasteResult(t), count=c) for t, c in taste_rows]
+
+    # Balanced ratio
+    rated_count = sum(entry.count for entry in by_taste)
+    balanced_count = next(
+        (entry.count for entry in by_taste if entry.taste_result == TasteResult.BALANCED),
+        0,
+    )
+    balanced_ratio = (
+        round(balanced_count / rated_count, 3) if rated_count else None
+    )
 
     return BrewStats(
         total_brews=total,
-        average_rating=round(avg_rating, 2),
-        most_used_method=most_used,
-        by_method=[MethodCount(method=m, count=c) for m, c in by_method.most_common()],
-        by_taste=[TasteCount(taste_result=t, count=c) for t, c in by_taste.most_common()],
-        balanced_ratio=round(balanced_ratio, 3) if balanced_ratio is not None else None,
+        average_rating=avg_rating,
+        most_used_method=most_used_method,
+        by_method=by_method,
+        by_taste=by_taste,
+        balanced_ratio=balanced_ratio,
     )
