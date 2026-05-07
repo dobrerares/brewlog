@@ -8,9 +8,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import api_router, ws_router
+from app.api import auth as auth_api
 from app.db.base import dispose_engine, init_engine
 from app.db.mongo import close_mongo, init_mongo
 from app.gql.schema import build_router as build_graphql_router
+from app.services.audit import AuditFailuresMiddleware
 
 
 @asynccontextmanager
@@ -44,6 +46,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(AuditFailuresMiddleware)
 
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
@@ -52,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(ws_router)
     app.include_router(build_graphql_router(), prefix="/graphql")
+    app.include_router(auth_api.router)
     return app
 
 
