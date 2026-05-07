@@ -12,11 +12,18 @@ from __future__ import annotations
 from datetime import date as DateType
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 from uuid import UUID
 
 import strawberry
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.base import NotFoundError
+from app.repositories.beans import BeanRepository
+from app.repositories.brewlogs import BrewlogRepository
+from app.repositories.equipment import EquipmentRepository
+from app.repositories.roasters import RoasterRepository
+from app.repositories.tasting_notes import TastingNoteRepository
 from app.schemas import (
     Bean as BeanModel,
 )
@@ -47,9 +54,6 @@ from app.schemas.common import (
     TasteResult,
 )
 
-if TYPE_CHECKING:
-    from app.services import AppState
-
 
 # --- enums ---------------------------------------------------------------
 BrewMethodGQL = strawberry.enum(BrewMethod, name="BrewMethod")
@@ -72,11 +76,32 @@ class Roaster:
     notes: Optional[str]
 
     @strawberry.field
-    def beans(self, info: strawberry.Info) -> list["Bean"]:
-        state: "AppState" = info.context["state"]
-        return [
-            Bean.from_model(b) for b in state.beans.list() if b.roaster_id == self.id
-        ]
+    async def beans(self, info: strawberry.Info) -> list["Bean"]:
+        db: AsyncSession = info.context["db"]
+        rows = await BeanRepository(db).list()
+        tn_repo = TastingNoteRepository(db)
+        result = []
+        for row in rows:
+            if row.roaster_id == self.id:
+                notes = await tn_repo.labels_for_bean(row.id)
+                m = BeanModel.model_validate(
+                    {
+                        "id": row.id,
+                        "name": row.name,
+                        "roaster_id": row.roaster_id,
+                        "origin_country": row.origin_country,
+                        "origin_region": row.origin_region,
+                        "process": row.process,
+                        "roast_level": row.roast_level,
+                        "variety": row.variety,
+                        "elevation_m": row.elevation_m,
+                        "tasting_notes": notes,
+                        "purchase_date": row.purchase_date,
+                        "price": row.price,
+                    }
+                )
+                result.append(Bean.from_model(m))
+        return result
 
     @classmethod
     def from_model(cls, m: RoasterModel) -> "Roaster":
@@ -105,23 +130,49 @@ class Bean:
     price: Optional[float]
 
     @strawberry.field
-    def roaster(self, info: strawberry.Info) -> Optional[Roaster]:
+    async def roaster(self, info: strawberry.Info) -> Optional[Roaster]:
         if self.roaster_id is None:
             return None
-        state: "AppState" = info.context["state"]
+        db: AsyncSession = info.context["db"]
         try:
-            return Roaster.from_model(state.roasters.get(self.roaster_id))
-        except LookupError:
+            row = await RoasterRepository(db).get(self.roaster_id)
+        except NotFoundError:
             return None
+        return Roaster.from_model(RoasterModel.model_validate(row, from_attributes=True))
 
     @strawberry.field
-    def brewlogs(self, info: strawberry.Info) -> list["BrewLog"]:
-        state: "AppState" = info.context["state"]
-        return [
-            BrewLog.from_model(b)
-            for b in state.brewlogs.list()
-            if b.bean_id == self.id
-        ]
+    async def brewlogs(self, info: strawberry.Info) -> list["BrewLog"]:
+        db: AsyncSession = info.context["db"]
+        rows = await BrewlogRepository(db).list()
+        tn_repo = TastingNoteRepository(db)
+        result = []
+        for row in rows:
+            if row.bean_id == self.id:
+                notes = await tn_repo.labels_for_brewlog(row.id)
+                m = BrewLogModel.model_validate(
+                    {
+                        "id": row.id,
+                        "date": row.date,
+                        "bean_id": row.bean_id,
+                        "equipment_id": row.equipment_id,
+                        "grinder_id": row.grinder_id,
+                        "grind_setting": row.grind_setting,
+                        "method": row.method,
+                        "dose_g": row.dose_g,
+                        "water_g": row.water_g,
+                        "water_temp_c": row.water_temp_c,
+                        "brew_time_s": row.brew_time_s,
+                        "yield_g": row.yield_g,
+                        "rating": row.rating,
+                        "taste_result": row.taste_result,
+                        "grind_adjustment": row.grind_adjustment,
+                        "tasting_notes": notes,
+                        "notes": row.notes,
+                        "photo_url": row.photo_url,
+                    }
+                )
+                result.append(BrewLog.from_model(m))
+        return result
 
     @classmethod
     def from_model(cls, m: BeanModel) -> "Bean":
@@ -154,13 +205,38 @@ class Equipment:
     notes: Optional[str]
 
     @strawberry.field
-    def brewlogs(self, info: strawberry.Info) -> list["BrewLog"]:
-        state: "AppState" = info.context["state"]
-        return [
-            BrewLog.from_model(b)
-            for b in state.brewlogs.list()
-            if self.id in (b.equipment_id, b.grinder_id)
-        ]
+    async def brewlogs(self, info: strawberry.Info) -> list["BrewLog"]:
+        db: AsyncSession = info.context["db"]
+        rows = await BrewlogRepository(db).list()
+        tn_repo = TastingNoteRepository(db)
+        result = []
+        for row in rows:
+            if self.id in (row.equipment_id, row.grinder_id):
+                notes = await tn_repo.labels_for_brewlog(row.id)
+                m = BrewLogModel.model_validate(
+                    {
+                        "id": row.id,
+                        "date": row.date,
+                        "bean_id": row.bean_id,
+                        "equipment_id": row.equipment_id,
+                        "grinder_id": row.grinder_id,
+                        "grind_setting": row.grind_setting,
+                        "method": row.method,
+                        "dose_g": row.dose_g,
+                        "water_g": row.water_g,
+                        "water_temp_c": row.water_temp_c,
+                        "brew_time_s": row.brew_time_s,
+                        "yield_g": row.yield_g,
+                        "rating": row.rating,
+                        "taste_result": row.taste_result,
+                        "grind_adjustment": row.grind_adjustment,
+                        "tasting_notes": notes,
+                        "notes": row.notes,
+                        "photo_url": row.photo_url,
+                    }
+                )
+                result.append(BrewLog.from_model(m))
+        return result
 
     @classmethod
     def from_model(cls, m: EquipmentModel) -> "Equipment":
@@ -199,28 +275,49 @@ class BrewLog:
     photo_url: Optional[str]
 
     @strawberry.field
-    def bean(self, info: strawberry.Info) -> Optional[Bean]:
-        state: "AppState" = info.context["state"]
+    async def bean(self, info: strawberry.Info) -> Optional[Bean]:
+        db: AsyncSession = info.context["db"]
         try:
-            return Bean.from_model(state.beans.get(self.bean_id))
-        except LookupError:
+            row = await BeanRepository(db).get(self.bean_id)
+        except NotFoundError:
             return None
+        tn_repo = TastingNoteRepository(db)
+        notes = await tn_repo.labels_for_bean(row.id)
+        m = BeanModel.model_validate(
+            {
+                "id": row.id,
+                "name": row.name,
+                "roaster_id": row.roaster_id,
+                "origin_country": row.origin_country,
+                "origin_region": row.origin_region,
+                "process": row.process,
+                "roast_level": row.roast_level,
+                "variety": row.variety,
+                "elevation_m": row.elevation_m,
+                "tasting_notes": notes,
+                "purchase_date": row.purchase_date,
+                "price": row.price,
+            }
+        )
+        return Bean.from_model(m)
 
     @strawberry.field
-    def equipment(self, info: strawberry.Info) -> Optional[Equipment]:
-        state: "AppState" = info.context["state"]
+    async def equipment(self, info: strawberry.Info) -> Optional[Equipment]:
+        db: AsyncSession = info.context["db"]
         try:
-            return Equipment.from_model(state.equipment.get(self.equipment_id))
-        except LookupError:
+            row = await EquipmentRepository(db).get(self.equipment_id)
+        except NotFoundError:
             return None
+        return Equipment.from_model(EquipmentModel.model_validate(row, from_attributes=True))
 
     @strawberry.field
-    def grinder(self, info: strawberry.Info) -> Optional[Equipment]:
-        state: "AppState" = info.context["state"]
+    async def grinder(self, info: strawberry.Info) -> Optional[Equipment]:
+        db: AsyncSession = info.context["db"]
         try:
-            return Equipment.from_model(state.equipment.get(self.grinder_id))
-        except LookupError:
+            row = await EquipmentRepository(db).get(self.grinder_id)
+        except NotFoundError:
             return None
+        return Equipment.from_model(EquipmentModel.model_validate(row, from_attributes=True))
 
     @classmethod
     def from_model(cls, m: BrewLogModel) -> "BrewLog":
