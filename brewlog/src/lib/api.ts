@@ -1,4 +1,7 @@
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8000";
+// Empty default = relative URLs → routed through Vite's dev-server proxy
+// (or behind a reverse proxy in prod). Override only when calling a remote
+// backend directly from the browser (which then needs CORS + SameSite=None).
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
 export async function api<T = unknown>(
   path: string,
