@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import api_router, ws_router
+from app.db.base import dispose_engine, init_engine
+from app.db.mongo import close_mongo, init_mongo
 from app.gql.schema import build_router as build_graphql_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_engine()
+    init_mongo()
+    yield
+    await dispose_engine()
+    await close_mongo()
 
 
 def create_app() -> FastAPI:
@@ -17,6 +30,7 @@ def create_app() -> FastAPI:
             "Bronze: REST CRUD / Silver: Faker loop + WebSocket / Gold: GraphQL."
         ),
         version="0.3.0",
+        lifespan=lifespan,
     )
 
     # Vite dev server runs on 5173; allow the React frontend to hit the API.
