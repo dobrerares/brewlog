@@ -19,7 +19,7 @@ def _fresh_state() -> Iterator[None]:
 
 
 @pytest.fixture
-def client() -> TestClient:
+def sync_client() -> TestClient:
     return TestClient(app)
 
 
@@ -203,3 +203,32 @@ async def mongo(mongo_url: str) -> AsyncIterator:
     yield db
     await client.drop_database(db.name)
     client.close()
+
+
+# ─── Async HTTP client fixture (Task 16+) — DB-backed handler tests ──────────
+
+from httpx import ASGITransport, AsyncClient as _AsyncClient
+
+from app.api.deps import get_db as _api_get_db
+from app.db.models import User as _User
+from sqlalchemy.dialects.postgresql import insert as _pg_insert
+
+
+@pytest.fixture
+async def client(db: AsyncSession) -> AsyncIterator[_AsyncClient]:
+    async def _override():
+        yield db
+
+    app.dependency_overrides[_api_get_db] = _override
+    transport = ASGITransport(app=app)
+    async with _AsyncClient(transport=transport, base_url="http://test") as c:
+        # Ensure the dev user exists for unauthenticated handlers (Phase 2 only)
+        from uuid import UUID as _UUID
+        await db.execute(
+            _pg_insert(_User)
+            .values(id=_UUID("00000000-0000-0000-0000-000000000001"), email="dev@x.com", password_hash="x")
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
+        await db.flush()
+        yield c
+    app.dependency_overrides.clear()

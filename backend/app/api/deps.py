@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
-from fastapi import Depends
+from typing import AsyncIterator
 
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.base import get_db as _get_db
 from app.schemas import Bean, BrewLog, Equipment, Roaster
 from app.services import AppState, InMemoryStore, get_state
+
+
+async def get_db() -> AsyncIterator[AsyncSession]:
+    async for session in _get_db():
+        yield session
 
 
 def brewlog_store(state: AppState = Depends(get_state)) -> InMemoryStore[BrewLog]:
