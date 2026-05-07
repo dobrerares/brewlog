@@ -9,8 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AuditLog
 
-pytestmark = pytest.mark.skip(reason="admin router lands in Task 26")
-
 
 async def _login(client: AsyncClient, email: str, password: str) -> None:
     await client.post("/api/v1/auth/login", json={"email": email, "password": password})

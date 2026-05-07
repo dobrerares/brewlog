@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import api_router, ws_router
+from app.api import admin as admin_api
 from app.api import auth as auth_api
 from app.db.base import dispose_engine, init_engine
 from app.db.mongo import close_mongo, init_mongo
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(ws_router)
     app.include_router(build_graphql_router(), prefix="/graphql")
     app.include_router(auth_api.router)
+    app.include_router(admin_api.router)
     return app
 
 
