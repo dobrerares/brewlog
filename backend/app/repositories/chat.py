@@ -27,7 +27,7 @@ class ChatRepository:
             partialFilterExpression={"type": "dm"},
             name="ix_room_pair_unique_dm",
         )
-        await self.db["chat_rooms"].create_index([("participants", ASCENDING)], name="ix_participants")
+        await self.db["chat_rooms"].create_index([("participants", ASCENDING)], name="ix_room_participants")
         await self.db["chat_messages"].create_index(
             [("room_id", ASCENDING), ("created_at", DESCENDING)], name="ix_msg_room_time"
         )
