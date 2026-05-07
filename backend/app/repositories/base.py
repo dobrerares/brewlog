@@ -36,7 +36,7 @@ class AsyncRepository(Generic[ModelT]):
         return instance
 
     async def get(self, pk: UUID) -> ModelT:
-        instance = await self.session.get(self.model, pk)
+        instance = await self.session.get(self.model, pk, populate_existing=True)
         if instance is None:
             raise NotFoundError(f"{self.model.__tablename__}:{pk}")
         return instance
