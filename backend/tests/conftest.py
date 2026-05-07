@@ -1,21 +1,11 @@
-"""Shared pytest fixtures — resets the in-memory state for every test."""
+"""Shared pytest fixtures."""
 
 from __future__ import annotations
-
-from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services import reset_state
-
-
-@pytest.fixture(autouse=True)
-def _fresh_state() -> Iterator[None]:
-    reset_state()
-    yield
-    reset_state()
 
 
 @pytest.fixture
