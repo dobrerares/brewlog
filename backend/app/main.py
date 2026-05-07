@@ -10,9 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import api_router, ws_router
 from app.api import admin as admin_api
 from app.api import auth as auth_api
+from app.api import chat as chat_api
 from app.db.base import dispose_engine, init_engine
-from app.db.mongo import close_mongo, init_mongo
+from app.db.mongo import close_mongo, get_db as get_mongo_db, init_mongo
 from app.gql.schema import build_router as build_graphql_router
+from app.repositories.chat import ChatRepository
 from app.services.audit import AuditFailuresMiddleware
 
 
@@ -20,6 +22,7 @@ from app.services.audit import AuditFailuresMiddleware
 async def lifespan(app: FastAPI):
     init_engine()
     init_mongo()
+    await ChatRepository(get_mongo_db()).bootstrap_lobby()
     yield
     await dispose_engine()
     await close_mongo()
@@ -58,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(build_graphql_router(), prefix="/graphql")
     app.include_router(auth_api.router)
     app.include_router(admin_api.router)
+    app.include_router(chat_api.router)
     return app
 
 

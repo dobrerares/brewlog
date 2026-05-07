@@ -205,11 +205,61 @@ from sqlalchemy.dialects.postgresql import insert as _pg_insert
 
 
 @pytest.fixture
-async def client(db: AsyncSession) -> AsyncIterator[_AsyncClient]:
+async def client(db: AsyncSession, mongo_url: str) -> AsyncIterator[_AsyncClient]:
+    from app.api.chat import _repo as _chat_repo_dep
+    from app.db.mongo import close_mongo as _close_mongo, init_mongo as _init_mongo
+    from app.repositories.chat import ChatRepository as _ChatRepository
+
     async def _override():
         yield db
 
+    # Initialise a test-scoped Mongo client so chat endpoints have a live DB.
+    mongo_db = _init_mongo(mongo_url)
+    await _ChatRepository(mongo_db).bootstrap_lobby()
+
+    def _test_repo():
+        return _ChatRepository(mongo_db)
+
     app.dependency_overrides[_api_get_db] = _override
+    app.dependency_overrides[_chat_repo_dep] = _test_repo
+
+    # Seed PERM_CHAT_READ + PERM_CHAT_SEND into the "user" role so freshly
+    # registered users can access chat endpoints without the full logged_in_client
+    # fixture.
+    from app.auth.permissions import PERM_CHAT_READ as _PERM_CHAT_READ, PERM_CHAT_SEND as _PERM_CHAT_SEND
+    from app.db.models import Permission as _Permission, Role as _Role, RolePermission as _RolePermission
+    from sqlalchemy import select as _select
+
+    for code in [_PERM_CHAT_READ, _PERM_CHAT_SEND]:
+        await db.execute(
+            _pg_insert(_Permission).values(code=code, description=code)
+            .on_conflict_do_nothing(index_elements=["code"])
+        )
+    await db.flush()
+
+    await db.execute(
+        _pg_insert(_Role).values(name="user").on_conflict_do_nothing(index_elements=["name"])
+    )
+    await db.flush()
+
+    user_role = (await db.execute(_select(_Role).where(_Role.name == "user"))).scalar_one()
+    all_chat_perms = (
+        await db.execute(
+            _select(_Permission).where(_Permission.code.in_([_PERM_CHAT_READ, _PERM_CHAT_SEND]))
+        )
+    ).scalars().all()
+    for perm in all_chat_perms:
+        await db.execute(
+            _pg_insert(_RolePermission)
+            .values(role_id=user_role.id, permission_id=perm.id)
+            .on_conflict_do_nothing()
+        )
+    await db.flush()
+    # Expire identity map so subsequent selectinload queries see the newly seeded
+    # role_permissions rows instead of using cached Role objects loaded before the
+    # permissions were inserted.
+    db.expire_all()
+
     transport = ASGITransport(app=app)
     async with _AsyncClient(transport=transport, base_url="http://test") as c:
         # Ensure the dev user exists for unauthenticated handlers (Phase 2 only)
@@ -222,6 +272,7 @@ async def client(db: AsyncSession) -> AsyncIterator[_AsyncClient]:
         await db.flush()
         yield c
     app.dependency_overrides.clear()
+    await _close_mongo()
 
 
 @pytest.fixture
@@ -276,6 +327,8 @@ async def logged_in_client(client: _AsyncClient, db: AsyncSession) -> _AsyncClie
                 .on_conflict_do_nothing()
             )
     await db.flush()
+    # Expire so selectinload queries see the newly inserted role_permissions rows.
+    db.expire_all()
 
     # Register + login test user
     await client.post("/api/v1/auth/register", json={"email": "u@x.com", "password": "hunter2"})
