@@ -1,4 +1,4 @@
-"""Integration tests for /api/v1/stats/brewlogs — SQL-aggregation backed."""
+"""Integration tests for /api/v1/stats/brewlogs — SQL-aggregation backed, auth-gated."""
 
 from __future__ import annotations
 
@@ -12,13 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Bean, Brewlog, Equipment
 
-# Dev user seeded by the `client` fixture in conftest.py
-DEV_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+
+async def _get_user_id(client: AsyncClient) -> UUID:
+    r = await client.get("/api/v1/auth/me")
+    assert r.status_code == 200, r.text
+    return UUID(r.json()["id"])
 
 
-async def test_stats_empty_state(client: AsyncClient) -> None:
+async def test_stats_empty_state(logged_in_client: AsyncClient) -> None:
     """With no brewlogs present the endpoint returns zeroed/null fields."""
-    r = await client.get("/api/v1/stats/brewlogs")
+    r = await logged_in_client.get("/api/v1/stats/brewlogs")
     assert r.status_code == 200
     body = r.json()
     assert body == {
@@ -34,9 +37,9 @@ async def test_stats_empty_state(client: AsyncClient) -> None:
 # ────────────────────────── helpers ──────────────────────────────────────────
 
 
-async def _insert_bean(db: AsyncSession) -> UUID:
+async def _insert_bean(db: AsyncSession, user_id: UUID) -> UUID:
     bean = Bean(
-        user_id=DEV_USER_ID,
+        user_id=user_id,
         name="Test Bean",
         origin_country="Colombia",
         process="Washed",
@@ -47,9 +50,9 @@ async def _insert_bean(db: AsyncSession) -> UUID:
     return bean.id
 
 
-async def _insert_equipment(db: AsyncSession, eq_type: str, name: str) -> UUID:
+async def _insert_equipment(db: AsyncSession, user_id: UUID, eq_type: str, name: str) -> UUID:
     eq = Equipment(
-        user_id=DEV_USER_ID,
+        user_id=user_id,
         name=name,
         type=eq_type,
         brand="TestBrand",
@@ -61,6 +64,7 @@ async def _insert_equipment(db: AsyncSession, eq_type: str, name: str) -> UUID:
 
 
 def _brewlog(
+    user_id: UUID,
     bean_id: UUID,
     equipment_id: UUID,
     grinder_id: UUID,
@@ -70,7 +74,7 @@ def _brewlog(
     taste_result: str | None = None,
 ) -> Brewlog:
     return Brewlog(
-        user_id=DEV_USER_ID,
+        user_id=user_id,
         bean_id=bean_id,
         equipment_id=equipment_id,
         grinder_id=grinder_id,
@@ -90,20 +94,21 @@ def _brewlog(
 
 
 async def test_stats_aggregates_correctly(
-    client: AsyncClient, db: AsyncSession
+    logged_in_client: AsyncClient, db: AsyncSession
 ) -> None:
     """Stats endpoint aggregates method/taste counts and ratios correctly."""
-    bean_id = await _insert_bean(db)
-    brewer_id = await _insert_equipment(db, "Brewer", "Hario V60")
-    grinder_id = await _insert_equipment(db, "Grinder", "Comandante C40")
+    user_id = await _get_user_id(logged_in_client)
+    bean_id = await _insert_bean(db, user_id)
+    brewer_id = await _insert_equipment(db, user_id, "Brewer", "Hario V60")
+    grinder_id = await _insert_equipment(db, user_id, "Grinder", "Comandante C40")
 
     # 3× V60, 1× Espresso; tastes: Balanced×2, Sour×1, Astringent×1
     rows = [
-        _brewlog(bean_id, brewer_id, grinder_id, method="V60", rating=4, taste_result="Balanced"),
-        _brewlog(bean_id, brewer_id, grinder_id, method="V60", rating=5, taste_result="Balanced"),
-        _brewlog(bean_id, brewer_id, grinder_id, method="V60", rating=2, taste_result="Sour"),
+        _brewlog(user_id, bean_id, brewer_id, grinder_id, method="V60", rating=4, taste_result="Balanced"),
+        _brewlog(user_id, bean_id, brewer_id, grinder_id, method="V60", rating=5, taste_result="Balanced"),
+        _brewlog(user_id, bean_id, brewer_id, grinder_id, method="V60", rating=2, taste_result="Sour"),
         _brewlog(
-            bean_id, brewer_id, grinder_id,
+            user_id, bean_id, brewer_id, grinder_id,
             method="Espresso", rating=3, taste_result="Astringent",
         ),
     ]
@@ -111,7 +116,7 @@ async def test_stats_aggregates_correctly(
         db.add(row)
     await db.flush()
 
-    r = await client.get("/api/v1/stats/brewlogs")
+    r = await logged_in_client.get("/api/v1/stats/brewlogs")
     assert r.status_code == 200
     body = r.json()
 
@@ -131,18 +136,19 @@ async def test_stats_aggregates_correctly(
 
 
 async def test_stats_no_taste_results(
-    client: AsyncClient, db: AsyncSession
+    logged_in_client: AsyncClient, db: AsyncSession
 ) -> None:
     """When no brewlog has a taste_result, by_taste is empty and balanced_ratio is None."""
-    bean_id = await _insert_bean(db)
-    brewer_id = await _insert_equipment(db, "Brewer", "AeroPress Brewer")
-    grinder_id = await _insert_equipment(db, "Grinder", "Hand Grinder")
+    user_id = await _get_user_id(logged_in_client)
+    bean_id = await _insert_bean(db, user_id)
+    brewer_id = await _insert_equipment(db, user_id, "Brewer", "AeroPress Brewer")
+    grinder_id = await _insert_equipment(db, user_id, "Grinder", "Hand Grinder")
 
-    db.add(_brewlog(bean_id, brewer_id, grinder_id, method="AeroPress", rating=4, taste_result=None))
-    db.add(_brewlog(bean_id, brewer_id, grinder_id, method="AeroPress", rating=3, taste_result=None))
+    db.add(_brewlog(user_id, bean_id, brewer_id, grinder_id, method="AeroPress", rating=4, taste_result=None))
+    db.add(_brewlog(user_id, bean_id, brewer_id, grinder_id, method="AeroPress", rating=3, taste_result=None))
     await db.flush()
 
-    r = await client.get("/api/v1/stats/brewlogs")
+    r = await logged_in_client.get("/api/v1/stats/brewlogs")
     assert r.status_code == 200
     body = r.json()
 
@@ -153,20 +159,21 @@ async def test_stats_no_taste_results(
 
 
 async def test_stats_all_balanced(
-    client: AsyncClient, db: AsyncSession
+    logged_in_client: AsyncClient, db: AsyncSession
 ) -> None:
     """When all rated brews are Balanced the ratio is 1.0."""
-    bean_id = await _insert_bean(db)
-    brewer_id = await _insert_equipment(db, "Brewer", "Chemex")
-    grinder_id = await _insert_equipment(db, "Grinder", "Baratza")
+    user_id = await _get_user_id(logged_in_client)
+    bean_id = await _insert_bean(db, user_id)
+    brewer_id = await _insert_equipment(db, user_id, "Brewer", "Chemex")
+    grinder_id = await _insert_equipment(db, user_id, "Grinder", "Baratza")
 
     for _ in range(3):
         db.add(
-            _brewlog(bean_id, brewer_id, grinder_id, method="Chemex", rating=5, taste_result="Balanced")
+            _brewlog(user_id, bean_id, brewer_id, grinder_id, method="Chemex", rating=5, taste_result="Balanced")
         )
     await db.flush()
 
-    r = await client.get("/api/v1/stats/brewlogs")
+    r = await logged_in_client.get("/api/v1/stats/brewlogs")
     assert r.status_code == 200
     body = r.json()
 

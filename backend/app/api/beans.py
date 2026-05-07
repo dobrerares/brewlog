@@ -1,8 +1,7 @@
-"""Bean CRUD — repository-backed."""
+"""Bean CRUD — repository-backed, auth-gated."""
 
 from __future__ import annotations
 
-import os
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -10,17 +9,22 @@ from pydantic import ValidationError
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
-from app.db.models import BeanTastingNote
+from app.api.deps import get_db, requires
+from app.auth.permissions import (
+    PERM_BEAN_CREATE,
+    PERM_BEAN_DELETE_OWN,
+    PERM_BEAN_READ,
+    PERM_BEAN_UPDATE_OWN,
+)
+from app.db.models import BeanTastingNote, User
 from app.repositories.base import NotFoundError
 from app.repositories.beans import BeanRepository
 from app.repositories.roasters import RoasterRepository
 from app.repositories.tasting_notes import TastingNoteRepository
 from app.schemas.bean import Bean, BeanCreate, BeanUpdate
+from app.services.audit import write_audit
 
 router = APIRouter(prefix="/beans", tags=["beans"])
-
-_DEV_USER = UUID(os.environ.get("DEV_USER_ID", "00000000-0000-0000-0000-000000000001"))
 
 
 def _repo(db: AsyncSession = Depends(get_db)) -> BeanRepository:
@@ -58,8 +62,11 @@ async def _build_response(row, tn_repo: TastingNoteRepository) -> Bean:
 
 
 @router.get("", response_model=list[Bean])
-async def list_beans(repo: BeanRepository = Depends(_repo)) -> list[Bean]:
-    rows = await repo.list()
+async def list_beans(
+    user: User = Depends(requires(PERM_BEAN_READ)),
+    repo: BeanRepository = Depends(_repo),
+) -> list[Bean]:
+    rows = await repo.list_for_user(user.id)
     tn_repo = TastingNoteRepository(repo.session)
     return [await _build_response(row, tn_repo) for row in rows]
 
@@ -67,30 +74,35 @@ async def list_beans(repo: BeanRepository = Depends(_repo)) -> list[Bean]:
 @router.post("", response_model=Bean, status_code=201)
 async def create_bean(
     payload: BeanCreate,
+    user: User = Depends(requires(PERM_BEAN_CREATE)),
     db: AsyncSession = Depends(get_db),
 ) -> Bean:
-    dev_user = UUID(os.environ.get("DEV_USER_ID", "00000000-0000-0000-0000-000000000001"))
     await _ensure_roaster(payload.roaster_id, db)
 
     repo = BeanRepository(db)
     data = payload.model_dump(exclude={"tasting_notes"})
-    row = await repo.create(user_id=dev_user, **data)
+    row = await repo.create(user_id=user.id, **data)
 
     tn_repo = TastingNoteRepository(db)
     if payload.tasting_notes:
         await tn_repo.attach_to_bean(row.id, payload.tasting_notes)
 
-    await repo.session.commit()
+    await write_audit(
+        db, user_id=user.id, action="BEAN_CREATE", status="OK",
+        resource_type="bean", resource_id=row.id,
+    )
+    await db.commit()
     return await _build_response(row, tn_repo)
 
 
 @router.get("/{bean_id}", response_model=Bean)
 async def get_bean(
     bean_id: UUID,
+    user: User = Depends(requires(PERM_BEAN_READ)),
     repo: BeanRepository = Depends(_repo),
 ) -> Bean:
     try:
-        row = await repo.get(bean_id)
+        row = await repo.get_for_user(bean_id, user.id)
     except NotFoundError:
         raise HTTPException(404, detail="bean not found")
     tn_repo = TastingNoteRepository(repo.session)
@@ -101,13 +113,14 @@ async def get_bean(
 async def update_bean(
     bean_id: UUID,
     payload: BeanUpdate,
+    user: User = Depends(requires(PERM_BEAN_UPDATE_OWN)),
     db: AsyncSession = Depends(get_db),
 ) -> Bean:
     repo = BeanRepository(db)
     tn_repo = TastingNoteRepository(db)
 
     try:
-        current_row = await repo.get(bean_id)
+        current_row = await repo.get_for_user(bean_id, user.id)
     except NotFoundError:
         raise HTTPException(404, detail="bean not found")
 
@@ -161,7 +174,11 @@ async def update_bean(
         if new_notes:
             await tn_repo.attach_to_bean(bean_id, new_notes)
 
-    await repo.session.commit()
+    await write_audit(
+        db, user_id=user.id, action="BEAN_UPDATE", status="OK",
+        resource_type="bean", resource_id=bean_id,
+    )
+    await db.commit()
 
     # Re-fetch to return committed state.
     updated_row = await repo.get(bean_id)
@@ -171,11 +188,18 @@ async def update_bean(
 @router.delete("/{bean_id}", status_code=204, response_class=Response)
 async def delete_bean(
     bean_id: UUID,
+    user: User = Depends(requires(PERM_BEAN_DELETE_OWN)),
     repo: BeanRepository = Depends(_repo),
+    db: AsyncSession = Depends(get_db),
 ) -> Response:
     try:
+        await repo.get_for_user(bean_id, user.id)
         await repo.delete(bean_id)
     except NotFoundError:
         raise HTTPException(404, detail="bean not found")
-    await repo.session.commit()
+    await write_audit(
+        db, user_id=user.id, action="BEAN_DELETE", status="OK",
+        resource_type="bean", resource_id=bean_id,
+    )
+    await db.commit()
     return Response(status_code=204)

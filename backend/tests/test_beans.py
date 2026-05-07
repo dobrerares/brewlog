@@ -1,4 +1,4 @@
-"""Integration tests for /api/v1/beans — repository-backed."""
+"""Integration tests for /api/v1/beans — repository-backed, auth-gated."""
 
 from __future__ import annotations
 
@@ -44,73 +44,73 @@ async def _make_bean(
 # ── CRUD round-trip ──────────────────────────────────────────────────────────
 
 
-async def test_create_bean_without_roaster(client: AsyncClient) -> None:
-    bean = await _make_bean(client)
+async def test_create_bean_without_roaster(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client)
     assert bean["roaster_id"] is None
     assert bean["id"]
     assert bean["name"] == "Finca La Esperanza"
 
 
-async def test_create_bean_with_roaster(client: AsyncClient) -> None:
-    roaster = await _make_roaster(client)
-    bean = await _make_bean(client, roaster_id=roaster["id"])
+async def test_create_bean_with_roaster(logged_in_client: AsyncClient) -> None:
+    roaster = await _make_roaster(logged_in_client)
+    bean = await _make_bean(logged_in_client, roaster_id=roaster["id"])
     assert bean["roaster_id"] == roaster["id"]
 
 
-async def test_create_bean_tasting_notes_round_trip(client: AsyncClient) -> None:
-    bean = await _make_bean(client, tasting_notes=["caramel", "nutty"])
+async def test_create_bean_tasting_notes_round_trip(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client, tasting_notes=["caramel", "nutty"])
     assert set(bean["tasting_notes"]) == {"caramel", "nutty"}
 
 
-async def test_get_bean(client: AsyncClient) -> None:
-    bean = await _make_bean(client)
-    r = await client.get(f"/api/v1/beans/{bean['id']}")
+async def test_get_bean(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client)
+    r = await logged_in_client.get(f"/api/v1/beans/{bean['id']}")
     assert r.status_code == 200
     assert r.json()["id"] == bean["id"]
 
 
-async def test_list_beans_returns_created(client: AsyncClient) -> None:
-    await _make_bean(client, name="Alpha")
-    await _make_bean(client, name="Beta")
-    r = await client.get("/api/v1/beans")
+async def test_list_beans_returns_created(logged_in_client: AsyncClient) -> None:
+    await _make_bean(logged_in_client, name="Alpha")
+    await _make_bean(logged_in_client, name="Beta")
+    r = await logged_in_client.get("/api/v1/beans")
     assert r.status_code == 200
     names = {b["name"] for b in r.json()}
     assert {"Alpha", "Beta"} <= names
 
 
-async def test_delete_bean(client: AsyncClient) -> None:
-    bean = await _make_bean(client)
-    r = await client.delete(f"/api/v1/beans/{bean['id']}")
+async def test_delete_bean(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client)
+    r = await logged_in_client.delete(f"/api/v1/beans/{bean['id']}")
     assert r.status_code == 204
-    assert (await client.get(f"/api/v1/beans/{bean['id']}")).status_code == 404
+    assert (await logged_in_client.get(f"/api/v1/beans/{bean['id']}")).status_code == 404
 
 
 # ── 404 cases ─────────────────────────────────────────────────────────────────
 
 
-async def test_get_unknown_returns_404(client: AsyncClient) -> None:
-    r = await client.get("/api/v1/beans/00000000-0000-0000-0000-000000000000")
+async def test_get_unknown_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.get("/api/v1/beans/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
 
 
-async def test_update_unknown_bean_returns_404(client: AsyncClient) -> None:
-    r = await client.patch(
+async def test_update_unknown_bean_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.patch(
         "/api/v1/beans/00000000-0000-0000-0000-000000000000",
         json={"roast_level": "Dark"},
     )
     assert r.status_code == 404
 
 
-async def test_delete_unknown_returns_404(client: AsyncClient) -> None:
-    r = await client.delete("/api/v1/beans/00000000-0000-0000-0000-000000000000")
+async def test_delete_unknown_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.delete("/api/v1/beans/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
 
 
 # ── 422 — bad payload ─────────────────────────────────────────────────────────
 
 
-async def test_create_bean_rejects_invalid_process(client: AsyncClient) -> None:
-    r = await client.post(
+async def test_create_bean_rejects_invalid_process(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.post(
         "/api/v1/beans",
         json={
             "name": "Bean",
@@ -123,8 +123,8 @@ async def test_create_bean_rejects_invalid_process(client: AsyncClient) -> None:
     assert r.status_code == 422
 
 
-async def test_create_bean_rejects_negative_elevation(client: AsyncClient) -> None:
-    r = await client.post(
+async def test_create_bean_rejects_negative_elevation(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.post(
         "/api/v1/beans",
         json={
             "name": "Bean",
@@ -138,8 +138,8 @@ async def test_create_bean_rejects_negative_elevation(client: AsyncClient) -> No
     assert r.status_code == 422
 
 
-async def test_create_bean_rejects_too_many_tasting_notes(client: AsyncClient) -> None:
-    r = await client.post(
+async def test_create_bean_rejects_too_many_tasting_notes(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.post(
         "/api/v1/beans",
         json={
             "name": "Bean",
@@ -156,8 +156,8 @@ async def test_create_bean_rejects_too_many_tasting_notes(client: AsyncClient) -
 # ── 422 — bad roaster_id ──────────────────────────────────────────────────────
 
 
-async def test_create_bean_rejects_invalid_roaster(client: AsyncClient) -> None:
-    r = await client.post(
+async def test_create_bean_rejects_invalid_roaster(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.post(
         "/api/v1/beans",
         json={
             "name": "Bean",
@@ -171,9 +171,9 @@ async def test_create_bean_rejects_invalid_roaster(client: AsyncClient) -> None:
     assert r.status_code == 422
 
 
-async def test_update_bean_into_unknown_roaster_is_rejected(client: AsyncClient) -> None:
-    bean = await _make_bean(client)
-    r = await client.patch(
+async def test_update_bean_into_unknown_roaster_is_rejected(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client)
+    r = await logged_in_client.patch(
         f"/api/v1/beans/{bean['id']}",
         json={"roaster_id": "00000000-0000-0000-0000-000000000000"},
     )
@@ -183,18 +183,18 @@ async def test_update_bean_into_unknown_roaster_is_rejected(client: AsyncClient)
 # ── partial PATCH ─────────────────────────────────────────────────────────────
 
 
-async def test_update_bean_partial_roast_level(client: AsyncClient) -> None:
-    bean = await _make_bean(client)
-    r = await client.patch(f"/api/v1/beans/{bean['id']}", json={"roast_level": "Medium"})
+async def test_update_bean_partial_roast_level(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client)
+    r = await logged_in_client.patch(f"/api/v1/beans/{bean['id']}", json={"roast_level": "Medium"})
     assert r.status_code == 200
     body = r.json()
     assert body["roast_level"] == "Medium"
     assert body["name"] == bean["name"]  # unchanged
 
 
-async def test_update_bean_replaces_tasting_notes(client: AsyncClient) -> None:
-    bean = await _make_bean(client, tasting_notes=["chocolate"])
-    r = await client.patch(
+async def test_update_bean_replaces_tasting_notes(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client, tasting_notes=["chocolate"])
+    r = await logged_in_client.patch(
         f"/api/v1/beans/{bean['id']}",
         json={"tasting_notes": ["berry", "floral"]},
     )
@@ -202,13 +202,13 @@ async def test_update_bean_replaces_tasting_notes(client: AsyncClient) -> None:
     assert set(r.json()["tasting_notes"]) == {"berry", "floral"}
 
 
-async def test_update_bean_with_invalid_field_returns_422(client: AsyncClient) -> None:
-    bean = await _make_bean(client)
-    r = await client.patch(f"/api/v1/beans/{bean['id']}", json={"elevation_m": -5})
+async def test_update_bean_with_invalid_field_returns_422(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client)
+    r = await logged_in_client.patch(f"/api/v1/beans/{bean['id']}", json={"elevation_m": -5})
     assert r.status_code == 422
 
 
-async def test_update_bean_that_nulls_required_field_returns_422(client: AsyncClient) -> None:
-    bean = await _make_bean(client)
-    r = await client.patch(f"/api/v1/beans/{bean['id']}", json={"origin_country": None})
+async def test_update_bean_that_nulls_required_field_returns_422(logged_in_client: AsyncClient) -> None:
+    bean = await _make_bean(logged_in_client)
+    r = await logged_in_client.patch(f"/api/v1/beans/{bean['id']}", json={"origin_country": None})
     assert r.status_code == 422

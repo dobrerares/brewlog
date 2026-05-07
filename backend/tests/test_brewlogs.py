@@ -1,9 +1,4 @@
-"""Integration tests for /api/v1/brewlogs — repository-backed.
-
-FK dependencies (beans, equipment) are inserted directly into the test DB
-session because those handlers are ported by parallel agents and may not yet
-be DB-backed in this worktree.
-"""
+"""Integration tests for /api/v1/brewlogs — repository-backed, auth-gated."""
 
 from __future__ import annotations
 
@@ -13,16 +8,14 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-_DEV_USER = UUID("00000000-0000-0000-0000-000000000001")
 
-
-async def _insert_bean(db: AsyncSession, **overrides) -> dict:
+async def _insert_bean(db: AsyncSession, user_id: UUID, **overrides) -> dict:
     """Insert a bean row directly into the DB and return it as a dict."""
     from app.db.models import Bean
 
     fields = {
         "id": uuid4(),
-        "user_id": _DEV_USER,
+        "user_id": user_id,
         "name": "Finca La Esperanza",
         "origin_country": "Colombia",
         "process": "Washed",
@@ -36,13 +29,13 @@ async def _insert_bean(db: AsyncSession, **overrides) -> dict:
     return {"id": str(row.id)}
 
 
-async def _insert_equipment(db: AsyncSession, **overrides) -> dict:
+async def _insert_equipment(db: AsyncSession, user_id: UUID, **overrides) -> dict:
     """Insert an equipment row directly into the DB and return it as a dict."""
     from app.db.models import Equipment
 
     fields = {
         "id": uuid4(),
-        "user_id": _DEV_USER,
+        "user_id": user_id,
         "name": "Hario V60",
         "type": "Brewer",
         "brand": "Hario",
@@ -87,11 +80,19 @@ async def _make_brewlog(
     return r.json()
 
 
+async def _get_logged_in_user_id(client: AsyncClient) -> UUID:
+    """Return the UUID of the currently authenticated user."""
+    r = await client.get("/api/v1/auth/me")
+    assert r.status_code == 200, r.text
+    return UUID(r.json()["id"])
+
+
 @pytest.fixture
-async def refs(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
-    bean = await _insert_bean(db)
-    brewer = await _insert_equipment(db, name="Hario V60", type="Brewer")
-    grinder = await _insert_equipment(db, name="Comandante C40", type="Grinder")
+async def refs(logged_in_client: AsyncClient, db: AsyncSession) -> dict[str, str]:
+    user_id = await _get_logged_in_user_id(logged_in_client)
+    bean = await _insert_bean(db, user_id)
+    brewer = await _insert_equipment(db, user_id, name="Hario V60", type="Brewer")
+    grinder = await _insert_equipment(db, user_id, name="Comandante C40", type="Grinder")
     return {
         "bean_id": bean["id"],
         "equipment_id": brewer["id"],
@@ -99,15 +100,15 @@ async def refs(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
     }
 
 
-async def test_create_and_get_brewlog(client: AsyncClient, refs: dict[str, str]) -> None:
-    brew = await _make_brewlog(client, **refs)
-    got = await client.get(f"/api/v1/brewlogs/{brew['id']}")
+async def test_create_and_get_brewlog(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    brew = await _make_brewlog(logged_in_client, **refs)
+    got = await logged_in_client.get(f"/api/v1/brewlogs/{brew['id']}")
     assert got.status_code == 200
     assert got.json()["method"] == "V60"
 
 
-async def test_create_espresso_requires_yield(client: AsyncClient, refs: dict[str, str]) -> None:
-    r = await client.post(
+async def test_create_espresso_requires_yield(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    r = await logged_in_client.post(
         "/api/v1/brewlogs",
         json={
             "date": "2026-04-01T08:00:00",
@@ -130,9 +131,9 @@ async def test_create_espresso_requires_yield(client: AsyncClient, refs: dict[st
     assert "yield_g" in r.text
 
 
-async def test_create_espresso_with_yield(client: AsyncClient, refs: dict[str, str]) -> None:
+async def test_create_espresso_with_yield(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
     brew = await _make_brewlog(
-        client,
+        logged_in_client,
         **refs,
         method="Espresso",
         dose_g="18",
@@ -145,8 +146,8 @@ async def test_create_espresso_with_yield(client: AsyncClient, refs: dict[str, s
     assert brew["yield_g"] == "34"
 
 
-async def test_create_rejects_bad_ratio(client: AsyncClient, refs: dict[str, str]) -> None:
-    r = await client.post(
+async def test_create_rejects_bad_ratio(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    r = await logged_in_client.post(
         "/api/v1/brewlogs",
         json={
             "date": "2026-04-01T08:00:00",
@@ -170,9 +171,9 @@ async def test_create_rejects_bad_ratio(client: AsyncClient, refs: dict[str, str
 
 
 async def test_create_rejects_bad_temp_for_method(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
-    r = await client.post(
+    r = await logged_in_client.post(
         "/api/v1/brewlogs",
         json={
             "date": "2026-04-01T08:00:00",
@@ -196,9 +197,9 @@ async def test_create_rejects_bad_temp_for_method(
 
 
 async def test_create_rejects_low_rating_without_notes(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
-    r = await client.post(
+    r = await logged_in_client.post(
         "/api/v1/brewlogs",
         json={
             "date": "2026-04-01T08:00:00",
@@ -222,17 +223,17 @@ async def test_create_rejects_low_rating_without_notes(
 
 
 async def test_low_rating_with_notes_is_accepted(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
     brew = await _make_brewlog(
-        client, **refs, rating=2, taste_result="Sour", notes="Too sharp, go finer."
+        logged_in_client, **refs, rating=2, taste_result="Sour", notes="Too sharp, go finer."
     )
     assert brew["rating"] == 2
 
 
-async def test_create_rejects_unknown_bean(client: AsyncClient, refs: dict[str, str]) -> None:
+async def test_create_rejects_unknown_bean(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
     bad = {**refs, "bean_id": "00000000-0000-0000-0000-000000000000"}
-    r = await client.post(
+    r = await logged_in_client.post(
         "/api/v1/brewlogs",
         json={
             "date": "2026-04-01T08:00:00",
@@ -256,10 +257,10 @@ async def test_create_rejects_unknown_bean(client: AsyncClient, refs: dict[str, 
 
 
 async def test_create_rejects_unknown_equipment(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
     bad = {**refs, "equipment_id": "00000000-0000-0000-0000-000000000000"}
-    r = await client.post(
+    r = await logged_in_client.post(
         "/api/v1/brewlogs",
         json={
             "date": "2026-04-01T08:00:00",
@@ -283,10 +284,10 @@ async def test_create_rejects_unknown_equipment(
 
 
 async def test_create_rejects_unknown_grinder(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
     bad = {**refs, "grinder_id": "00000000-0000-0000-0000-000000000000"}
-    r = await client.post(
+    r = await logged_in_client.post(
         "/api/v1/brewlogs",
         json={
             "date": "2026-04-01T08:00:00",
@@ -310,7 +311,7 @@ async def test_create_rejects_unknown_grinder(
 
 
 async def test_list_brewlogs_sorted_newest_first(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
     dates = [
         "2026-04-01T08:00:00",
@@ -320,9 +321,9 @@ async def test_list_brewlogs_sorted_newest_first(
         "2026-04-05T08:00:00",
     ]
     for d in dates:
-        await _make_brewlog(client, **refs, date=d)
+        await _make_brewlog(logged_in_client, **refs, date=d)
 
-    r = await client.get("/api/v1/brewlogs")
+    r = await logged_in_client.get("/api/v1/brewlogs")
     assert r.status_code == 200
     items = r.json()
     assert len(items) >= 5
@@ -331,10 +332,10 @@ async def test_list_brewlogs_sorted_newest_first(
     assert returned_dates == sorted(returned_dates, reverse=True)
 
 
-async def test_list_filters_by_method(client: AsyncClient, refs: dict[str, str]) -> None:
-    await _make_brewlog(client, **refs, method="V60")
+async def test_list_filters_by_method(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    await _make_brewlog(logged_in_client, **refs, method="V60")
     await _make_brewlog(
-        client,
+        logged_in_client,
         **refs,
         method="Espresso",
         dose_g="18",
@@ -343,7 +344,7 @@ async def test_list_filters_by_method(client: AsyncClient, refs: dict[str, str])
         brew_time_s=30,
         yield_g="34",
     )
-    r = await client.get("/api/v1/brewlogs", params={"method": "Espresso"})
+    r = await logged_in_client.get("/api/v1/brewlogs", params={"method": "Espresso"})
     assert r.status_code == 200
     items = r.json()
     assert len(items) == 1
@@ -351,22 +352,22 @@ async def test_list_filters_by_method(client: AsyncClient, refs: dict[str, str])
 
 
 async def test_list_filters_by_taste_and_rating_range(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
-    await _make_brewlog(client, **refs, rating=5, taste_result="Balanced")
+    await _make_brewlog(logged_in_client, **refs, rating=5, taste_result="Balanced")
     await _make_brewlog(
-        client,
+        logged_in_client,
         **refs,
         rating=2,
         taste_result="Sour",
         notes="under-extracted",
     )
 
-    r = await client.get("/api/v1/brewlogs", params={"min_rating": 4, "taste_result": "Balanced"})
+    r = await logged_in_client.get("/api/v1/brewlogs", params={"min_rating": 4, "taste_result": "Balanced"})
     assert r.status_code == 200
     assert len(r.json()) == 1
 
-    r = await client.get("/api/v1/brewlogs", params={"max_rating": 3})
+    r = await logged_in_client.get("/api/v1/brewlogs", params={"max_rating": 3})
     assert r.status_code == 200
     low = r.json()
     assert len(low) == 1
@@ -374,22 +375,23 @@ async def test_list_filters_by_taste_and_rating_range(
 
 
 async def test_list_filters_by_bean_id(
-    client: AsyncClient, refs: dict[str, str], db: AsyncSession
+    logged_in_client: AsyncClient, refs: dict[str, str], db: AsyncSession
 ) -> None:
-    other_bean = await _insert_bean(db, name="Other Bean")
-    await _make_brewlog(client, **refs)
-    await _make_brewlog(client, **{**refs, "bean_id": other_bean["id"]})
-    r = await client.get("/api/v1/brewlogs", params={"bean_id": other_bean["id"]})
+    user_id = await _get_logged_in_user_id(logged_in_client)
+    other_bean = await _insert_bean(db, user_id, name="Other Bean")
+    await _make_brewlog(logged_in_client, **refs)
+    await _make_brewlog(logged_in_client, **{**refs, "bean_id": other_bean["id"]})
+    r = await logged_in_client.get("/api/v1/brewlogs", params={"bean_id": other_bean["id"]})
     assert r.status_code == 200
     items = r.json()
     assert len(items) == 1
     assert items[0]["bean_id"] == other_bean["id"]
 
 
-async def test_list_filters_by_date_range(client: AsyncClient, refs: dict[str, str]) -> None:
-    await _make_brewlog(client, **refs, date="2026-03-01T08:00:00")
-    await _make_brewlog(client, **refs, date="2026-04-01T08:00:00")
-    r = await client.get(
+async def test_list_filters_by_date_range(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    await _make_brewlog(logged_in_client, **refs, date="2026-03-01T08:00:00")
+    await _make_brewlog(logged_in_client, **refs, date="2026-04-01T08:00:00")
+    r = await logged_in_client.get(
         "/api/v1/brewlogs",
         params={"date_from": "2026-03-15T00:00:00", "date_to": "2026-05-01T00:00:00"},
     )
@@ -397,9 +399,9 @@ async def test_list_filters_by_date_range(client: AsyncClient, refs: dict[str, s
     assert len(r.json()) == 1
 
 
-async def test_update_brewlog(client: AsyncClient, refs: dict[str, str]) -> None:
-    brew = await _make_brewlog(client, **refs)
-    r = await client.patch(
+async def test_update_brewlog(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    brew = await _make_brewlog(logged_in_client, **refs)
+    r = await logged_in_client.patch(
         f"/api/v1/brewlogs/{brew['id']}",
         json={"rating": 5, "notes": "Revisited and loved it."},
     )
@@ -408,11 +410,11 @@ async def test_update_brewlog(client: AsyncClient, refs: dict[str, str]) -> None
 
 
 async def test_update_brewlog_revalidates_business_rules(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
-    brew = await _make_brewlog(client, **refs, rating=4, taste_result="Balanced")
+    brew = await _make_brewlog(logged_in_client, **refs, rating=4, taste_result="Balanced")
     # Rating < 3 without notes must fail the cross-field rule.
-    r = await client.patch(
+    r = await logged_in_client.patch(
         f"/api/v1/brewlogs/{brew['id']}",
         json={"rating": 2, "notes": None},
     )
@@ -420,11 +422,12 @@ async def test_update_brewlog_revalidates_business_rules(
 
 
 async def test_update_brewlog_can_change_bean(
-    client: AsyncClient, refs: dict[str, str], db: AsyncSession
+    logged_in_client: AsyncClient, refs: dict[str, str], db: AsyncSession
 ) -> None:
-    brew = await _make_brewlog(client, **refs)
-    other_bean = await _insert_bean(db, name="Another Bean")
-    r = await client.patch(
+    brew = await _make_brewlog(logged_in_client, **refs)
+    user_id = await _get_logged_in_user_id(logged_in_client)
+    other_bean = await _insert_bean(db, user_id, name="Another Bean")
+    r = await logged_in_client.patch(
         f"/api/v1/brewlogs/{brew['id']}",
         json={"bean_id": other_bean["id"]},
     )
@@ -433,43 +436,43 @@ async def test_update_brewlog_can_change_bean(
 
 
 async def test_update_brewlog_rejects_unknown_ref(
-    client: AsyncClient, refs: dict[str, str]
+    logged_in_client: AsyncClient, refs: dict[str, str]
 ) -> None:
-    brew = await _make_brewlog(client, **refs)
-    r = await client.patch(
+    brew = await _make_brewlog(logged_in_client, **refs)
+    r = await logged_in_client.patch(
         f"/api/v1/brewlogs/{brew['id']}",
         json={"bean_id": "00000000-0000-0000-0000-000000000000"},
     )
     assert r.status_code == 422
 
 
-async def test_update_unknown_brewlog_returns_404(client: AsyncClient) -> None:
-    r = await client.patch(
+async def test_update_unknown_brewlog_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.patch(
         "/api/v1/brewlogs/00000000-0000-0000-0000-000000000000",
         json={"rating": 5, "notes": "x"},
     )
     assert r.status_code == 404
 
 
-async def test_delete_brewlog(client: AsyncClient, refs: dict[str, str]) -> None:
-    brew = await _make_brewlog(client, **refs)
-    r = await client.delete(f"/api/v1/brewlogs/{brew['id']}")
+async def test_delete_brewlog(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    brew = await _make_brewlog(logged_in_client, **refs)
+    r = await logged_in_client.delete(f"/api/v1/brewlogs/{brew['id']}")
     assert r.status_code == 204
-    assert (await client.get(f"/api/v1/brewlogs/{brew['id']}")).status_code == 404
+    assert (await logged_in_client.get(f"/api/v1/brewlogs/{brew['id']}")).status_code == 404
 
 
-async def test_delete_unknown_returns_404(client: AsyncClient) -> None:
-    r = await client.delete("/api/v1/brewlogs/00000000-0000-0000-0000-000000000000")
+async def test_delete_unknown_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.delete("/api/v1/brewlogs/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
 
 
-async def test_get_unknown_returns_404(client: AsyncClient) -> None:
-    r = await client.get("/api/v1/brewlogs/00000000-0000-0000-0000-000000000000")
+async def test_get_unknown_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.get("/api/v1/brewlogs/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
 
 
-async def test_create_rejects_extra_field(client: AsyncClient, refs: dict[str, str]) -> None:
-    r = await client.post(
+async def test_create_rejects_extra_field(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    r = await logged_in_client.post(
         "/api/v1/brewlogs",
         json={
             "date": "2026-04-01T08:00:00",
@@ -492,22 +495,22 @@ async def test_create_rejects_extra_field(client: AsyncClient, refs: dict[str, s
     assert r.status_code == 422
 
 
-async def test_tasting_notes_round_trip(client: AsyncClient, refs: dict[str, str]) -> None:
-    brew = await _make_brewlog(client, **refs, tasting_notes=["caramel", "floral"])
-    got = await client.get(f"/api/v1/brewlogs/{brew['id']}")
+async def test_tasting_notes_round_trip(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
+    brew = await _make_brewlog(logged_in_client, **refs, tasting_notes=["caramel", "floral"])
+    got = await logged_in_client.get(f"/api/v1/brewlogs/{brew['id']}")
     assert got.status_code == 200
     assert set(got.json()["tasting_notes"]) == {"caramel", "floral"}
 
 
-async def test_tasting_notes_patch_adds(client: AsyncClient, refs: dict[str, str]) -> None:
+async def test_tasting_notes_patch_adds(logged_in_client: AsyncClient, refs: dict[str, str]) -> None:
     """PATCH with tasting_notes appends new labels (on_conflict_do_nothing semantics)."""
-    brew = await _make_brewlog(client, **refs, tasting_notes=["chocolate"])
-    r = await client.patch(
+    brew = await _make_brewlog(logged_in_client, **refs, tasting_notes=["chocolate"])
+    r = await logged_in_client.patch(
         f"/api/v1/brewlogs/{brew['id']}",
         json={"tasting_notes": ["caramel", "citrus"]},
     )
     assert r.status_code == 200
     # After patch, new notes should be present (additive — on_conflict_do_nothing)
-    got = await client.get(f"/api/v1/brewlogs/{brew['id']}")
+    got = await logged_in_client.get(f"/api/v1/brewlogs/{brew['id']}")
     notes = set(got.json()["tasting_notes"])
     assert {"caramel", "citrus"} <= notes

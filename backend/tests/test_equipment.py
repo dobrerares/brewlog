@@ -1,4 +1,4 @@
-"""Equipment API tests — repository-backed."""
+"""Equipment API tests — repository-backed, auth-gated."""
 
 from __future__ import annotations
 
@@ -46,43 +46,43 @@ async def _make_grinder(client: AsyncClient, **overrides: object) -> dict:
 # ─── tests ─────────────────────────────────────────────────────────────────────
 
 
-async def test_create_brewer(client: AsyncClient) -> None:
-    brewer = await _make_brewer(client)
+async def test_create_brewer(logged_in_client: AsyncClient) -> None:
+    brewer = await _make_brewer(logged_in_client)
     assert brewer["type"] == "Brewer"
     assert brewer["grind_type"] is None
     assert brewer["id"]
 
 
-async def test_create_grinder(client: AsyncClient) -> None:
-    grinder = await _make_grinder(client)
+async def test_create_grinder(logged_in_client: AsyncClient) -> None:
+    grinder = await _make_grinder(logged_in_client)
     assert grinder["type"] == "Grinder"
     assert grinder["grind_type"] == "Stepped"
     assert grinder["id"]
 
 
-async def test_get_equipment(client: AsyncClient) -> None:
-    brewer = await _make_brewer(client, name="V60 Special")
-    r = await client.get(f"/api/v1/equipment/{brewer['id']}")
+async def test_get_equipment(logged_in_client: AsyncClient) -> None:
+    brewer = await _make_brewer(logged_in_client, name="V60 Special")
+    r = await logged_in_client.get(f"/api/v1/equipment/{brewer['id']}")
     assert r.status_code == 200
     assert r.json()["name"] == "V60 Special"
 
 
-async def test_get_unknown_returns_404(client: AsyncClient) -> None:
-    r = await client.get("/api/v1/equipment/00000000-0000-0000-0000-000000000000")
+async def test_get_unknown_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.get("/api/v1/equipment/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404
 
 
-async def test_list_equipment(client: AsyncClient) -> None:
-    await _make_brewer(client, name="Alpha")
-    await _make_brewer(client, name="Beta")
-    r = await client.get("/api/v1/equipment")
+async def test_list_equipment(logged_in_client: AsyncClient) -> None:
+    await _make_brewer(logged_in_client, name="Alpha")
+    await _make_brewer(logged_in_client, name="Beta")
+    r = await logged_in_client.get("/api/v1/equipment")
     assert r.status_code == 200
     names = {e["name"] for e in r.json()}
     assert {"Alpha", "Beta"} <= names
 
 
-async def test_grinder_requires_grind_type(client: AsyncClient) -> None:
-    r = await client.post(
+async def test_grinder_requires_grind_type(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.post(
         "/api/v1/equipment",
         json={
             "name": "Orphan",
@@ -99,8 +99,8 @@ async def test_grinder_requires_grind_type(client: AsyncClient) -> None:
     assert "grind_type" in r.text
 
 
-async def test_brewer_cannot_have_grinder_fields(client: AsyncClient) -> None:
-    r = await client.post(
+async def test_brewer_cannot_have_grinder_fields(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.post(
         "/api/v1/equipment",
         json={
             "name": "Weirdbrewer",
@@ -116,9 +116,9 @@ async def test_brewer_cannot_have_grinder_fields(client: AsyncClient) -> None:
     assert r.status_code == 422
 
 
-async def test_update_equipment_partial(client: AsyncClient) -> None:
-    brewer = await _make_brewer(client)
-    r = await client.patch(
+async def test_update_equipment_partial(logged_in_client: AsyncClient) -> None:
+    brewer = await _make_brewer(logged_in_client)
+    r = await logged_in_client.patch(
         f"/api/v1/equipment/{brewer['id']}",
         json={"model": "Ceramic"},
     )
@@ -128,9 +128,9 @@ async def test_update_equipment_partial(client: AsyncClient) -> None:
     assert body["name"] == brewer["name"]  # unchanged
 
 
-async def test_update_into_invalid_grinder_combo_is_rejected(client: AsyncClient) -> None:
-    brewer = await _make_brewer(client)
-    r = await client.patch(
+async def test_update_into_invalid_grinder_combo_is_rejected(logged_in_client: AsyncClient) -> None:
+    brewer = await _make_brewer(logged_in_client)
+    r = await logged_in_client.patch(
         f"/api/v1/equipment/{brewer['id']}",
         json={"grind_type": "Stepped"},
     )
@@ -138,21 +138,21 @@ async def test_update_into_invalid_grinder_combo_is_rejected(client: AsyncClient
     assert r.status_code == 422
 
 
-async def test_update_unknown_equipment_returns_404(client: AsyncClient) -> None:
-    r = await client.patch(
+async def test_update_unknown_equipment_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.patch(
         "/api/v1/equipment/00000000-0000-0000-0000-000000000000",
         json={"model": "X"},
     )
     assert r.status_code == 404
 
 
-async def test_delete_equipment(client: AsyncClient) -> None:
-    brewer = await _make_brewer(client)
-    r = await client.delete(f"/api/v1/equipment/{brewer['id']}")
+async def test_delete_equipment(logged_in_client: AsyncClient) -> None:
+    brewer = await _make_brewer(logged_in_client)
+    r = await logged_in_client.delete(f"/api/v1/equipment/{brewer['id']}")
     assert r.status_code == 204
-    assert (await client.get(f"/api/v1/equipment/{brewer['id']}")).status_code == 404
+    assert (await logged_in_client.get(f"/api/v1/equipment/{brewer['id']}")).status_code == 404
 
 
-async def test_delete_unknown_returns_404(client: AsyncClient) -> None:
-    r = await client.delete("/api/v1/equipment/00000000-0000-0000-0000-000000000000")
+async def test_delete_unknown_returns_404(logged_in_client: AsyncClient) -> None:
+    r = await logged_in_client.delete("/api/v1/equipment/00000000-0000-0000-0000-000000000000")
     assert r.status_code == 404

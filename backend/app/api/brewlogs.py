@@ -1,16 +1,22 @@
-"""Brew-log endpoints — repository-backed."""
+"""Brew-log endpoints — repository-backed, auth-gated."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from os import environ
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_db, requires
+from app.auth.permissions import (
+    PERM_BREWLOG_CREATE,
+    PERM_BREWLOG_DELETE_OWN,
+    PERM_BREWLOG_READ,
+    PERM_BREWLOG_UPDATE_OWN,
+)
+from app.db.models import User
 from app.repositories.base import NotFoundError
 from app.repositories.beans import BeanRepository
 from app.repositories.brewlogs import BrewlogRepository
@@ -18,10 +24,9 @@ from app.repositories.equipment import EquipmentRepository
 from app.repositories.tasting_notes import TastingNoteRepository
 from app.schemas.brewlog import BrewLog, BrewLogCreate, BrewLogUpdate
 from app.schemas.common import BrewMethod, TasteResult
+from app.services.audit import write_audit
 
 router = APIRouter(prefix="/brewlogs", tags=["brewlogs"])
-
-_DEV_USER = UUID(environ.get("DEV_USER_ID", "00000000-0000-0000-0000-000000000001"))
 
 
 def _repo(db: AsyncSession = Depends(get_db)) -> BrewlogRepository:
@@ -81,7 +86,6 @@ def _build_brewlog_schema(row, tasting_notes: list[str]) -> BrewLog:
     We use from_attributes=True so that extra ORM columns (user_id, created_at)
     are silently ignored instead of triggering the extra="forbid" validator.
     """
-    # Attach tasting_notes to a simple namespace for from_attributes validation.
     class _WithNotes:
         pass
 
@@ -101,10 +105,11 @@ async def list_brewlogs(
     max_rating: int | None = Query(None, ge=1, le=5),
     date_from: datetime | None = Query(None, description="Inclusive lower bound"),
     date_to: datetime | None = Query(None, description="Inclusive upper bound"),
+    user: User = Depends(requires(PERM_BREWLOG_READ)),
     repo: BrewlogRepository = Depends(_repo),
     tn_repo: TastingNoteRepository = Depends(_tn_repo),
 ) -> list[BrewLog]:
-    rows = await repo.list()
+    rows = await repo.list_for_user(user.id)
 
     # Apply in-memory filters (simple; SQL filtering is a Phase 2 optimisation).
     if method is not None:
@@ -142,20 +147,26 @@ async def list_brewlogs(
 @router.post("", response_model=BrewLog, status_code=status.HTTP_201_CREATED)
 async def create_brewlog(
     payload: BrewLogCreate,
+    user: User = Depends(requires(PERM_BREWLOG_CREATE)),
     repo: BrewlogRepository = Depends(_repo),
     bean_repo: BeanRepository = Depends(_bean_repo),
     equip_repo: EquipmentRepository = Depends(_equip_repo),
     tn_repo: TastingNoteRepository = Depends(_tn_repo),
+    db: AsyncSession = Depends(get_db),
 ) -> BrewLog:
     data = payload.model_dump()
     tasting_notes: list[str] = data.pop("tasting_notes", []) or []
 
     await _check_refs(data["bean_id"], data["equipment_id"], data["grinder_id"], bean_repo, equip_repo)
 
-    row = await repo.create(user_id=_DEV_USER, **data)
+    row = await repo.create(user_id=user.id, **data)
     if tasting_notes:
         await tn_repo.attach_to_brewlog(row.id, tasting_notes)
-    await repo.session.commit()
+    await write_audit(
+        db, user_id=user.id, action="BREWLOG_CREATE", status="OK",
+        resource_type="brewlog", resource_id=row.id,
+    )
+    await db.commit()
 
     return _build_brewlog_schema(row, tasting_notes)
 
@@ -163,11 +174,12 @@ async def create_brewlog(
 @router.get("/{brewlog_id}", response_model=BrewLog)
 async def get_brewlog(
     brewlog_id: UUID,
+    user: User = Depends(requires(PERM_BREWLOG_READ)),
     repo: BrewlogRepository = Depends(_repo),
     tn_repo: TastingNoteRepository = Depends(_tn_repo),
 ) -> BrewLog:
     try:
-        row = await repo.get(brewlog_id)
+        row = await repo.get_for_user(brewlog_id, user.id)
     except NotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "brewlog not found")
     notes = await tn_repo.labels_for_brewlog(row.id)
@@ -178,13 +190,15 @@ async def get_brewlog(
 async def update_brewlog(
     brewlog_id: UUID,
     payload: BrewLogUpdate,
+    user: User = Depends(requires(PERM_BREWLOG_UPDATE_OWN)),
     repo: BrewlogRepository = Depends(_repo),
     bean_repo: BeanRepository = Depends(_bean_repo),
     equip_repo: EquipmentRepository = Depends(_equip_repo),
     tn_repo: TastingNoteRepository = Depends(_tn_repo),
+    db: AsyncSession = Depends(get_db),
 ) -> BrewLog:
     try:
-        current = await repo.get(brewlog_id)
+        current = await repo.get_for_user(brewlog_id, user.id)
     except NotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "brewlog not found")
 
@@ -206,7 +220,6 @@ async def update_brewlog(
         )
 
     # Re-validate merged entity with full BrewLogBase rules.
-    # Use from_attributes=True so extra ORM columns (user_id, created_at) are silently ignored.
     current_notes = await tn_repo.labels_for_brewlog(current.id)
 
     class _MergedBrewlog:
@@ -230,7 +243,11 @@ async def update_brewlog(
     if tasting_notes_update is not None:
         await tn_repo.attach_to_brewlog(current.id, tasting_notes_update)
 
-    await repo.session.commit()
+    await write_audit(
+        db, user_id=user.id, action="BREWLOG_UPDATE", status="OK",
+        resource_type="brewlog", resource_id=brewlog_id,
+    )
+    await db.commit()
 
     row = await repo.get(brewlog_id)
     final_notes = await tn_repo.labels_for_brewlog(row.id)
@@ -240,10 +257,17 @@ async def update_brewlog(
 @router.delete("/{brewlog_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_brewlog(
     brewlog_id: UUID,
+    user: User = Depends(requires(PERM_BREWLOG_DELETE_OWN)),
     repo: BrewlogRepository = Depends(_repo),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
+        await repo.get_for_user(brewlog_id, user.id)
         await repo.delete(brewlog_id)
     except NotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "brewlog not found")
-    await repo.session.commit()
+    await write_audit(
+        db, user_id=user.id, action="BREWLOG_DELETE", status="OK",
+        resource_type="brewlog", resource_id=brewlog_id,
+    )
+    await db.commit()

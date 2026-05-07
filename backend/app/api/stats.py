@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
-from app.db.models import Brewlog
+from app.api.deps import get_db, requires
+from app.auth.permissions import PERM_BREWLOG_READ
+from app.db.models import Brewlog, User
 from app.schemas import BrewStats, MethodCount, TasteCount
 from app.schemas.common import BrewMethod, TasteResult
 
@@ -16,9 +17,12 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 
 @router.get("/brewlogs", response_model=BrewStats)
 async def brewlog_stats(
+    user: User = Depends(requires(PERM_BREWLOG_READ)),
     db: AsyncSession = Depends(get_db),
 ) -> BrewStats:
-    total = await db.scalar(select(func.count(Brewlog.id)))
+    total = await db.scalar(
+        select(func.count(Brewlog.id)).where(Brewlog.user_id == user.id)
+    )
     total = total or 0
 
     if total == 0:
@@ -32,13 +36,16 @@ async def brewlog_stats(
         )
 
     # Average rating
-    raw_avg = await db.scalar(select(func.avg(Brewlog.rating)))
+    raw_avg = await db.scalar(
+        select(func.avg(Brewlog.rating)).where(Brewlog.user_id == user.id)
+    )
     avg_rating = round(float(raw_avg), 2) if raw_avg is not None else None
 
     # By-method breakdown — descending count order
     method_rows = (
         await db.execute(
             select(Brewlog.method, func.count().label("cnt"))
+            .where(Brewlog.user_id == user.id)
             .group_by(Brewlog.method)
             .order_by(func.count().desc())
         )
@@ -50,6 +57,7 @@ async def brewlog_stats(
     taste_rows = (
         await db.execute(
             select(Brewlog.taste_result, func.count().label("cnt"))
+            .where(Brewlog.user_id == user.id)
             .where(Brewlog.taste_result.is_not(None))
             .group_by(Brewlog.taste_result)
             .order_by(func.count().desc())

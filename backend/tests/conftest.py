@@ -222,3 +222,62 @@ async def client(db: AsyncSession) -> AsyncIterator[_AsyncClient]:
         await db.flush()
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def logged_in_client(client: _AsyncClient, db: AsyncSession) -> _AsyncClient:
+    """Registers + logs in a fresh user, with RBAC seeded for the 'user' role.
+
+    Returned client has a session_id cookie set for an account with the
+    default 'user' role (:own scopes only).
+    """
+    from sqlalchemy import select as _select
+    from sqlalchemy.dialects.postgresql import insert as _pg_insert
+
+    from app.db.models import Permission as _Permission, Role as _Role, RolePermission as _RolePermission
+    from app.auth.permissions import (
+        PERM_BEAN_READ, PERM_BEAN_CREATE, PERM_BEAN_UPDATE_OWN, PERM_BEAN_DELETE_OWN,
+        PERM_BREWLOG_READ, PERM_BREWLOG_CREATE, PERM_BREWLOG_UPDATE_OWN, PERM_BREWLOG_DELETE_OWN,
+        PERM_EQUIPMENT_READ, PERM_EQUIPMENT_CREATE, PERM_EQUIPMENT_UPDATE_OWN, PERM_EQUIPMENT_DELETE_OWN,
+        PERM_ROASTER_READ, PERM_ROASTER_CREATE, PERM_ROASTER_UPDATE_OWN, PERM_ROASTER_DELETE_OWN,
+        ALL_PERMISSIONS,
+    )
+
+    USER_PERMS = [
+        PERM_BEAN_READ, PERM_BEAN_CREATE, PERM_BEAN_UPDATE_OWN, PERM_BEAN_DELETE_OWN,
+        PERM_BREWLOG_READ, PERM_BREWLOG_CREATE, PERM_BREWLOG_UPDATE_OWN, PERM_BREWLOG_DELETE_OWN,
+        PERM_EQUIPMENT_READ, PERM_EQUIPMENT_CREATE, PERM_EQUIPMENT_UPDATE_OWN, PERM_EQUIPMENT_DELETE_OWN,
+        PERM_ROASTER_READ, PERM_ROASTER_CREATE, PERM_ROASTER_UPDATE_OWN, PERM_ROASTER_DELETE_OWN,
+    ]
+
+    # Seed all permissions
+    for code in ALL_PERMISSIONS:
+        await db.execute(
+            _pg_insert(_Permission).values(code=code, description=code)
+            .on_conflict_do_nothing(index_elements=["code"])
+        )
+    await db.flush()
+
+    # Ensure 'user' role exists
+    await db.execute(
+        _pg_insert(_Role).values(name="user").on_conflict_do_nothing(index_elements=["name"])
+    )
+    await db.flush()
+
+    # Attach user-role permissions
+    user_role = (await db.execute(_select(_Role).where(_Role.name == "user"))).scalar_one()
+    all_perms = (await db.execute(_select(_Permission))).scalars().all()
+    perm_by_code = {p.code: p for p in all_perms}
+    for code in USER_PERMS:
+        if code in perm_by_code:
+            await db.execute(
+                _pg_insert(_RolePermission)
+                .values(role_id=user_role.id, permission_id=perm_by_code[code].id)
+                .on_conflict_do_nothing()
+            )
+    await db.flush()
+
+    # Register + login test user
+    await client.post("/api/v1/auth/register", json={"email": "u@x.com", "password": "hunter2"})
+    await client.post("/api/v1/auth/login", json={"email": "u@x.com", "password": "hunter2"})
+    return client
