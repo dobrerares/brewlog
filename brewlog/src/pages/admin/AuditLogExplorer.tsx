@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { API_BASE } from "../../api/client";
+import { API_BASE } from "../../app/api/client";
 
 type Row = {
   id: number;

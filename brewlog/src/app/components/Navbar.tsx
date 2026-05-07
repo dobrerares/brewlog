@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router'
 import { Logo } from './Logo'
 import { ThemeToggle } from './ThemeToggle'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth } from '@/hooks/useAuth'
 import { Menu, X } from 'lucide-react'
 import { useState } from 'react'
 
@@ -11,7 +11,7 @@ interface NavbarProps {
 
 export function Navbar({ type = 'landing' }: NavbarProps) {
   const location = useLocation()
-  const { user, logout } = useAuth()
+  const { user, logout, hasPermission } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const isActive = (path: string) => {
@@ -57,6 +57,9 @@ export function Navbar({ type = 'landing' }: NavbarProps) {
     { path: '/brews', label: 'Brew Logs' },
     { path: '/live', label: 'Live' },
     { path: '/dashboard', label: 'Dashboard' },
+    ...(user ? [{ path: '/chat', label: 'Chat' }] : []),
+    ...(hasPermission('user:observe') ? [{ path: '/admin/observed', label: 'Admin' }] : []),
+    ...(hasPermission('log:read') ? [{ path: '/admin/audit', label: 'Audit' }] : []),
   ]
 
   return (
@@ -87,9 +90,9 @@ export function Navbar({ type = 'landing' }: NavbarProps) {
             onClick={logout}
             className="w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm transition-colors hover:opacity-80"
             style={{ backgroundColor: 'var(--cream)', color: 'var(--primary-brown)' }}
-            title={`Logged in as ${user?.name || 'User'} — click to log out`}
+            title={`Logged in as ${user?.email || 'User'} — click to log out`}
           >
-            {(user?.name || 'U')[0].toUpperCase()}
+            {(user?.email || 'U')[0].toUpperCase()}
           </button>
         </div>
 
