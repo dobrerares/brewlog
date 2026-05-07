@@ -152,6 +152,9 @@ def pg_url() -> _Iterator_tc[str]:
         url = pg.get_connection_url().replace("postgresql+psycopg2", "postgresql+asyncpg")
         cfg = _alembic_config(url)
         _alembic_command.upgrade(cfg, "head")
+        # Wire the global engine so session_factory() works in WS handlers + middleware.
+        from app.db.base import init_engine
+        init_engine(url)
         yield url
 
 
@@ -183,7 +186,11 @@ async def db(pg_url: str) -> AsyncIterator[AsyncSession]:
 @pytest.fixture(scope="session")
 def mongo_url() -> _Iterator_tc[str]:
     with MongoDbContainer("mongo:7") as mc:
-        yield mc.get_connection_url() + "/brewlog_test?authSource=admin"
+        url = mc.get_connection_url() + "/brewlog_test?authSource=admin"
+        # Wire the global Mongo client so get_db() works in WS handler + chat service.
+        from app.db.mongo import init_mongo
+        init_mongo(url)
+        yield url
 
 
 @pytest.fixture
