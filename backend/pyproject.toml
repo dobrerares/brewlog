@@ -1,5 +1,6 @@
 [tool.pytest.ini_options]
 minversion = "8.0"
+asyncio_mode = "auto"
 addopts = [
     "-ra",
     "--strict-markers",

@@ -123,3 +123,83 @@ def make_brewlog(
     response = client.post("/api/v1/brewlogs", json=payload)
     assert response.status_code == 201, response.text
     return response.json()
+
+
+# ─── Phase 1 testcontainers fixtures (Postgres + Mongo) ──────────────────────────
+
+import asyncio as _asyncio_tc
+import os as _os_tc
+from collections.abc import AsyncIterator, Iterator as _Iterator_tc
+from pathlib import Path as _Path_tc
+
+from alembic import command as _alembic_command
+from alembic.config import Config as _AlembicConfig
+from motor.motor_asyncio import AsyncIOMotorClient as _AsyncIOMotorClient
+from sqlalchemy.pool import NullPool as _NullPool
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker as _async_sessionmaker,
+    create_async_engine as _create_async_engine,
+)
+from testcontainers.mongodb import MongoDbContainer
+from testcontainers.postgres import PostgresContainer
+
+ALEMBIC_INI = _Path_tc(__file__).resolve().parents[1] / "alembic.ini"
+
+
+def _alembic_config(database_url: str) -> _AlembicConfig:
+    cfg = _AlembicConfig(str(ALEMBIC_INI))
+    cfg.set_main_option("script_location", str(ALEMBIC_INI.parent / "alembic"))
+    cfg.attributes["sqlalchemy.url"] = database_url  # not strictly needed; env.py reads env var
+    _os_tc.environ["DATABASE_URL"] = database_url
+    return cfg
+
+
+@pytest.fixture(scope="session")
+def pg_url() -> _Iterator_tc[str]:
+    with PostgresContainer("postgres:16-alpine", username="brewlog", password="brewlog", dbname="brewlog") as pg:
+        url = pg.get_connection_url().replace("postgresql+psycopg2", "postgresql+asyncpg")
+        cfg = _alembic_config(url)
+        _alembic_command.upgrade(cfg, "head")
+        yield url
+
+
+@pytest.fixture(scope="session")
+def engine(pg_url: str) -> _Iterator_tc[AsyncEngine]:
+    """Session-scoped engine handle (URL only; NullPool — no live connections held)."""
+    eng = _create_async_engine(pg_url, future=True, poolclass=_NullPool)
+    yield eng
+    # engine has NullPool so no connections to dispose; this is a no-op but clean
+    try:
+        _asyncio_tc.run(eng.dispose())
+    except RuntimeError:
+        pass  # already closed or no loop
+
+
+@pytest.fixture
+async def db(pg_url: str) -> AsyncIterator[AsyncSession]:
+    """Per-test async session — fresh engine per test to avoid cross-loop issues."""
+    eng = _create_async_engine(pg_url, future=True, poolclass=_NullPool)
+    async with eng.connect() as conn:
+        trans = await conn.begin()
+        factory = _async_sessionmaker(bind=conn, expire_on_commit=False, class_=AsyncSession)
+        async with factory() as session:
+            yield session
+        await trans.rollback()
+    await eng.dispose()
+
+
+@pytest.fixture(scope="session")
+def mongo_url() -> _Iterator_tc[str]:
+    with MongoDbContainer("mongo:7") as mc:
+        yield mc.get_connection_url() + "/brewlog_test"
+
+
+@pytest.fixture
+async def mongo(mongo_url: str) -> AsyncIterator:
+    client = _AsyncIOMotorClient(mongo_url)
+    db = client.get_default_database()
+    yield db
+    await client.drop_database(db.name)
+    client.close()
