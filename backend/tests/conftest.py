@@ -193,7 +193,7 @@ async def db(pg_url: str) -> AsyncIterator[AsyncSession]:
 @pytest.fixture(scope="session")
 def mongo_url() -> _Iterator_tc[str]:
     with MongoDbContainer("mongo:7") as mc:
-        yield mc.get_connection_url() + "/brewlog_test"
+        yield mc.get_connection_url() + "/brewlog_test?authSource=admin"
 
 
 @pytest.fixture
