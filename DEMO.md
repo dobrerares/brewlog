@@ -314,3 +314,72 @@ npm run build
 | Gold   | Reimplement as GraphQL | `http://localhost:8000/graphql` |
 | Gold   | Infinite scroll + prefetching | Live page + Network tab shows `?page=1`+`?page=2` on first load |
 | Gold   | 1-to-many full-stack CRUD + stats | Bean sidebar on Live page (filter / add / delete / stats) |
+
+---
+
+## 8. Assignment 3 demo — DB persistence + RBAC + chat + auto-observation
+
+### 8.1 Bring up the stack
+
+```bash
+docker compose up -d
+# → postgres (host port 5433), mongo (host port 27018), api running.
+# Migrations + RBAC seed + chat seed run automatically.
+```
+
+Confirm everything is healthy:
+```bash
+docker compose ps
+# All three services should show (healthy).
+```
+
+### 8.2 Bronze — DB persistence
+
+Confirm 14 tables exist with the migration applied:
+```bash
+docker compose exec postgres psql -U brewlog -d brewlog -c "\dt"
+```
+Expected output: 14 user tables — `users, roles, permissions, user_roles, role_permissions, sessions, roasters, beans, equipment, brewlogs, tasting_notes, bean_tasting_notes, brewlog_tasting_notes, audit_log` — plus `alembic_version`.
+
+Confirm the detection trigger and stored procedure are present:
+```bash
+docker compose exec postgres psql -U brewlog -d brewlog -c "\df detect_malicious"
+docker compose exec postgres psql -U brewlog -d brewlog -c "SELECT tgname FROM pg_trigger WHERE tgname='audit_log_after_insert'"
+```
+
+### 8.3 Silver — RBAC + chat
+
+1. Visit `http://<server-ip>:5173/register` from a different machine.
+   Register two users (e.g. `a@x.com`, `b@x.com`).
+2. Both log in; both navigate to `/chat`.
+3. Type messages in window A → window B updates live (WebSocket fan-out via topic-based broadcast manager).
+4. Try the GraphQL endpoint at `http://<server-ip>:8000/graphql` — same data, different protocol.
+
+### 8.4 Gold — auto-observation
+
+1. With a normal user logged in (e.g. `a@x.com`), hit `/api/v1/admin/observed-users` 5 times in rapid succession (e.g. via curl with the session cookie, or by clicking the Admin link in the nav 5 times):
+   ```bash
+   for i in 1 2 3 4 5; do curl -b cookies.txt -s http://localhost:8000/api/v1/admin/observed-users; done
+   ```
+   Each returns 403. After the 5th, the Postgres trigger fires and marks `a@x.com` as observed.
+
+2. Log out, log in as admin (`admin@brewlog.local` / `admin`).
+
+3. Visit `/admin/observed` → `a@x.com` is listed with reason `permission-denied-burst (5 in 5min)` and an `observed_at` timestamp.
+
+4. Click the **Clear** button next to the row → row disappears; an `OBSERVATION_CLEARED` audit row is written.
+
+5. Visit `/admin/audit` → filter by action `OBSERVED_AUTO` to see the trigger's self-audit row, and by `PERM_DENIED` to see the 5 denied attempts.
+
+### 8.5 Detection thresholds (for reference)
+
+The `detect_malicious(p_user_id UUID)` stored procedure observes a user when ANY of these heuristics match:
+
+| Heuristic | Threshold | Window | Reason format |
+|---|---|---|---|
+| Failed logins | ≥5 | 5 min | `failed-login-burst (N in 5min)` |
+| Permission denials | ≥5 | 5 min | `permission-denied-burst (N in 5min)` |
+| Mass mutations (CREATE/UPDATE/DELETE) | ≥20 | 60 sec | `mass-mutation-burst (N in 60s)` |
+| Mass deletes | ≥10 | 60 sec | `mass-delete-burst (N in 60s)` |
+
+Recursion is prevented: the trigger skips audit rows with `status='SYSTEM'` (which the procedure itself writes when observing), and skips users already observed.
