@@ -11,6 +11,7 @@ interface FormErrors {
   email?: string
   password?: string
   confirmPassword?: string
+  form?: string
 }
 
 export function Register() {
@@ -67,7 +68,7 @@ export function Register() {
     setErrors(prev => ({ ...prev, [name]: validateField(name, formValues[name as keyof typeof formValues]) }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const newErrors: FormErrors = {}
     const fields = ['name', 'email', 'password', 'confirmPassword'] as const
@@ -81,8 +82,21 @@ export function Register() {
     setTouched(allTouched)
     if (Object.keys(newErrors).length > 0) return
 
-    register(formValues.name, formValues.email, formValues.password)
-    navigate('/brews')
+    try {
+      await register(formValues.name, formValues.email, formValues.password)
+      navigate('/brews')
+    } catch (err) {
+      const error = err as Error & { status?: number }
+      if (error.status === 409) {
+        setErrors({ email: 'Email already registered' })
+        return
+      }
+      if (error.status === 422) {
+        setErrors({ form: 'Registration data was rejected by the server.' })
+        return
+      }
+      setErrors({ form: error.message || 'Could not reach the registration server.' })
+    }
   }
 
   const getPasswordStrength = (password: string) => {
@@ -218,6 +232,7 @@ export function Register() {
             >
               Create account
             </button>
+            <ErrorMessage message={errors.form} />
           </form>
         </div>
 

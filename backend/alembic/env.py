@@ -17,21 +17,21 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # Make `app` importable when running `alembic` from backend/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.db.base import Base
+from app.db.base import Base, async_database_url
 from app.db import models  # noqa: F401  side-effect: registers tables
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+config.set_main_option("sqlalchemy.url", async_database_url(os.environ["DATABASE_URL"]))
 
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=os.environ["DATABASE_URL"],
+        url=async_database_url(os.environ["DATABASE_URL"]),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},

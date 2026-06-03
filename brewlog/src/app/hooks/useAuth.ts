@@ -1,31 +1,14 @@
-import { useCookie } from './useCookie'
-import { useNavigate } from 'react-router'
-
-interface User {
-  name: string
-  email: string
-}
+import { useAuth as useBackendAuth } from '@/hooks/useAuth'
 
 export function useAuth() {
-  const [user, setUser] = useCookie<User | null>('brewlog_user', null)
-  const navigate = useNavigate()
+  const auth = useBackendAuth()
 
-  const login = (email: string, _password: string) => {
-    // Fake auth — accept any valid-looking credentials
-    const name = email.split('@')[0]
-    setUser({ name, email })
+  return {
+    ...auth,
+    isAuthenticated: auth.state.status === 'auth',
+    login: auth.login,
+    verifyMfaLogin: auth.verifyMfaLogin,
+    resendLoginEmailCode: auth.resendLoginEmailCode,
+    register: (_name: string, email: string, password: string) => auth.register(email, password),
   }
-
-  const register = (name: string, email: string, _password: string) => {
-    setUser({ name, email })
-  }
-
-  const logout = () => {
-    setUser(null)
-    navigate('/login')
-  }
-
-  const isAuthenticated = !!user
-
-  return { user, login, register, logout, isAuthenticated }
 }

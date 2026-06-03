@@ -58,8 +58,12 @@ export function Navbar({ type = 'landing' }: NavbarProps) {
     { path: '/live', label: 'Live' },
     { path: '/dashboard', label: 'Dashboard' },
     ...(user ? [{ path: '/chat', label: 'Chat' }] : []),
+    ...(user ? [{ path: '/account/security', label: 'Security' }] : []),
     ...(hasPermission('user:observe') ? [{ path: '/admin/observed', label: 'Admin' }] : []),
     ...(hasPermission('log:read') ? [{ path: '/admin/audit', label: 'Audit' }] : []),
+    ...(hasPermission('user:reset') || hasPermission('security:analyze') || hasPermission('generator:control')
+      ? [{ path: '/admin/security', label: 'Tools' }]
+      : []),
   ]
 
   return (

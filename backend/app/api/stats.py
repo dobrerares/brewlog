@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, requires
 from app.auth.permissions import PERM_BREWLOG_READ
-from app.db.models import Brewlog, User
+from app.db.models import Bean, BeanTastingNote, Brewlog, BrewlogTastingNote, TastingNote, User
 from app.schemas import BrewStats, MethodCount, TasteCount
 from app.schemas.common import BrewMethod, TasteResult
 
@@ -83,3 +83,59 @@ async def brewlog_stats(
         by_taste=by_taste,
         balanced_ratio=balanced_ratio,
     )
+
+
+@router.get("/tasting-note-matrix-naive")
+async def tasting_note_matrix_naive(
+    user: User = Depends(requires(PERM_BREWLOG_READ)),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    beans = (await db.execute(select(Bean).where(Bean.user_id == user.id))).scalars().all()
+    matrix: dict[str, dict[str, int]] = {}
+    for bean in beans:
+        labels = (
+            await db.execute(
+                select(TastingNote.label)
+                .join(BeanTastingNote, BeanTastingNote.tasting_note_id == TastingNote.id)
+                .where(BeanTastingNote.bean_id == bean.id)
+            )
+        ).scalars().all()
+        for a in labels:
+            matrix.setdefault(a, {})
+            for b in labels:
+                if a != b:
+                    matrix[a][b] = matrix[a].get(b, 0) + 1
+    return {"source": "naive", "notes": matrix}
+
+
+@router.get("/tasting-note-matrix")
+async def tasting_note_matrix(
+    user: User = Depends(requires(PERM_BREWLOG_READ)),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    rows = (
+        await db.execute(
+            select(Bean.id, TastingNote.label)
+            .join(BeanTastingNote, BeanTastingNote.bean_id == Bean.id)
+            .join(TastingNote, TastingNote.id == BeanTastingNote.tasting_note_id)
+            .where(Bean.user_id == user.id)
+            .union_all(
+                select(Brewlog.id, TastingNote.label)
+                .join(BrewlogTastingNote, BrewlogTastingNote.brewlog_id == Brewlog.id)
+                .join(TastingNote, TastingNote.id == BrewlogTastingNote.tasting_note_id)
+                .where(Brewlog.user_id == user.id)
+            )
+        )
+    ).all()
+    grouped: dict[str, list[str]] = {}
+    for entity_id, label in rows:
+        grouped.setdefault(str(entity_id), []).append(label)
+    matrix: dict[str, dict[str, int]] = {}
+    for labels in grouped.values():
+        uniq = sorted(set(labels))
+        for a in uniq:
+            matrix.setdefault(a, {})
+            for b in uniq:
+                if a != b:
+                    matrix[a][b] = matrix[a].get(b, 0) + 1
+    return {"source": "optimized", "entity_count": len(grouped), "notes": matrix}
