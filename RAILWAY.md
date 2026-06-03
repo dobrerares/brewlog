@@ -45,3 +45,29 @@ Leave `VITE_API_BASE` unset only when the frontend and API are served behind the
 - Railway injects `PORT`; both Dockerfiles now bind to that at runtime.
 - The backend runs Alembic migrations and RBAC/chat seed scripts on startup.
 - The backend health check is `/health`; the frontend health check is `/`.
+
+## CLI-assisted setup
+
+You can create the Railway services and set most variables with:
+
+```powershell
+.\scripts\railway-setup.ps1
+```
+
+After creating Railway public domains, run it again with domains and skip service creation:
+
+```powershell
+.\scripts\railway-setup.ps1 `
+  -SkipCreateServices `
+  -BackendDomain "https://<backend-domain>" `
+  -FrontendDomain "https://<frontend-domain>"
+```
+
+Railway still needs these service source settings once per app:
+
+- Backend root directory: `/backend`
+- Backend config path: `/backend/railway.json`
+- Frontend root directory: `/brewlog`
+- Frontend config path: `/brewlog/railway.json`
+
+The checked-in `railway.json` files define Dockerfile builds, health checks, restart policy, and monorepo watch paths.
