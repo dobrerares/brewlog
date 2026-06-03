@@ -77,6 +77,7 @@ $JwtSecret = New-Secret
 $backendVars = @{
     DATABASE_URL = '${{' + $PostgresService + '.DATABASE_URL}}'
     MONGO_URL = '${{' + $MongoService + '.MONGO_URL}}'
+    MONGO_DB = "brewlog_chat"
     SESSION_SECRET = $SessionSecret
     JWT_SECRET = $JwtSecret
     AUTH_COOKIE_SECURE = "true"

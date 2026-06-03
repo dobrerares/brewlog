@@ -12,16 +12,21 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 CHAT_ROOMS = "chat_rooms"
 CHAT_MESSAGES = "chat_messages"
+DEFAULT_DB_NAME = "brewlog_chat"
 
 _client: AsyncIOMotorClient | None = None
 _db: AsyncIOMotorDatabase | None = None
 
 
-def init_mongo(mongo_url: str | None = None) -> AsyncIOMotorDatabase:
+def mongo_database_name() -> str:
+    return os.environ.get("MONGO_DB", DEFAULT_DB_NAME)
+
+
+def init_mongo(mongo_url: str | None = None, database_name: str | None = None) -> AsyncIOMotorDatabase:
     global _client, _db
     url = mongo_url or os.environ["MONGO_URL"]
     _client = AsyncIOMotorClient(url)
-    _db = _client.get_default_database()
+    _db = _client.get_default_database(default=database_name or mongo_database_name())
     return _db
 
 

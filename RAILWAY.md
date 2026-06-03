@@ -14,6 +14,7 @@ Set these on the backend service:
 ```text
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 MONGO_URL=${{MongoDB.MONGO_URL}}
+MONGO_DB=brewlog_chat
 SESSION_SECRET=<random-long-secret>
 JWT_SECRET=<random-long-secret>
 CORS_ORIGINS=https://<frontend-domain>
