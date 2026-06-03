@@ -12,7 +12,7 @@
 import { drainQueue, enqueue } from './offlineQueue'
 import type { QueuedMutation } from './offlineQueue'
 
-export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+export const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 export class NetworkError extends Error {
   constructor(message: string) {
@@ -60,15 +60,26 @@ export interface Page<T> {
   total_pages: number
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${API_BASE}${path}`, {
       headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      credentials: 'include',
       ...init,
     })
   } catch (err) {
     throw new NetworkError((err as Error).message)
+  }
+  const canRefresh = path !== '/api/v1/auth/refresh' && path !== '/api/v1/auth/login/verify-mfa'
+  if (response.status === 401 && retry && canRefresh) {
+    const refreshed = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    if (refreshed.ok) return request<T>(path, init, false)
+    window.dispatchEvent(new CustomEvent('brewlog:session-expired'))
   }
   if (!response.ok) {
     const body = await response.text()

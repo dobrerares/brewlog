@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,16 @@ from app.db.mongo import close_mongo, get_db as get_mongo_db, init_mongo
 from app.gql.schema import build_router as build_graphql_router
 from app.repositories.chat import ChatRepository
 from app.services.audit import AuditFailuresMiddleware
+
+
+def _cors_origins() -> list[str]:
+    configured = os.environ.get("CORS_ORIGINS")
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
 
 @asynccontextmanager
@@ -39,13 +50,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Vite dev server runs on 5173; allow the React frontend to hit the API.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
+        allow_origins=_cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -51,7 +51,7 @@ export function Login() {
     setErrors(prev => ({ ...prev, [name]: error }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const newErrors: FormErrors = {}
     ;(['email', 'password'] as const).forEach(field => {
@@ -62,8 +62,16 @@ export function Login() {
     setTouched({ email: true, password: true })
     if (Object.keys(newErrors).length > 0) return
 
-    login(formValues.email, formValues.password)
-    navigate('/brews')
+    try {
+      const result = await login(formValues.email, formValues.password)
+      if (result.mfaRequired) {
+        navigate('/login/mfa', { state: { devMagicLink: result.devMagicLink } })
+        return
+      }
+      navigate('/brews')
+    } catch {
+      setErrors({ password: 'Invalid credentials' })
+    }
   }
 
   const ErrorMessage = ({ message }: { message?: string }) => {
@@ -159,6 +167,12 @@ export function Login() {
           Don't have an account?{' '}
           <Link to="/register" className="font-medium hover:underline" style={{ color: 'var(--primary-brown)' }}>
             Sign up
+          </Link>
+        </p>
+        <p className="text-center mt-3 text-sm" style={{ color: 'var(--text-muted)' }}>
+          Have an admin reset token?{' '}
+          <Link to="/password-reset/confirm" className="font-medium hover:underline" style={{ color: 'var(--primary-brown)' }}>
+            Reset password
           </Link>
         </p>
       </div>

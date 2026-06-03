@@ -16,7 +16,7 @@ import os
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.auth.passwords import hash_password
+from app.auth.passwords import hash_password, verify_password
 from app.auth.permissions import (
     ALL_PERMISSIONS,
     PERM_BEAN_READ, PERM_BEAN_CREATE, PERM_BEAN_UPDATE_OWN, PERM_BEAN_DELETE_OWN,
@@ -71,14 +71,32 @@ async def seed() -> None:
             await session.execute(stmt)
 
         # 4. Bootstrap admin user
-        admin_email = os.environ.get("ADMIN_BOOTSTRAP_EMAIL", "admin@brewlog.local")
-        admin_pw = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "admin")
+        admin_email = os.environ.get("ADMIN_BOOTSTRAP_EMAIL", "admin@brewlog.ro")
+        admin_pw = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "Admin123!")
         existing = (await session.execute(select(User).where(User.email == admin_email))).scalar_one_or_none()
         if existing is None:
-            user = User(email=admin_email, password_hash=hash_password(admin_pw))
-            session.add(user)
-            await session.flush()
-            session.add(UserRole(user_id=user.id, role_id=admin.id))
+            legacy = (
+                await session.execute(select(User).where(User.email == "admin@brewlog.local"))
+            ).scalar_one_or_none()
+            if legacy is not None:
+                legacy.email = admin_email
+                legacy.password_hash = hash_password(admin_pw)
+                await session.execute(
+                    pg_insert(UserRole)
+                    .values(user_id=legacy.id, role_id=admin.id)
+                    .on_conflict_do_nothing()
+                )
+            else:
+                user = User(email=admin_email, password_hash=hash_password(admin_pw))
+                session.add(user)
+                await session.flush()
+                await session.execute(
+                    pg_insert(UserRole)
+                    .values(user_id=user.id, role_id=admin.id)
+                    .on_conflict_do_nothing()
+                )
+        elif verify_password("admin", existing.password_hash):
+            existing.password_hash = hash_password(admin_pw)
 
         await session.commit()
         print(f"seeded RBAC; admin = {admin_email}")

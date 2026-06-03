@@ -5,6 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.api.deps import requires
+from app.auth.permissions import PERM_GENERATOR
+from app.db.models import User
 from app.services import AppState, BrewLogGenerator, get_state
 
 router = APIRouter(prefix="/generator", tags=["generator"])
@@ -26,6 +29,7 @@ def _generator(state: AppState = Depends(get_state)) -> BrewLogGenerator:
 
 @router.get("/status")
 def generator_status(
+    user: User = Depends(requires(PERM_GENERATOR)),
     gen: BrewLogGenerator = Depends(_generator),
 ) -> dict[str, object]:
     return gen.status()
@@ -34,6 +38,7 @@ def generator_status(
 @router.post("/start", status_code=status.HTTP_202_ACCEPTED)
 async def start_generator(
     payload: StartRequest,
+    user: User = Depends(requires(PERM_GENERATOR)),
     gen: BrewLogGenerator = Depends(_generator),
 ) -> dict[str, object]:
     if gen.is_running:
@@ -44,6 +49,7 @@ async def start_generator(
 
 @router.post("/stop", status_code=status.HTTP_202_ACCEPTED)
 async def stop_generator(
+    user: User = Depends(requires(PERM_GENERATOR)),
     gen: BrewLogGenerator = Depends(_generator),
 ) -> dict[str, object]:
     if not gen.is_running:
@@ -54,6 +60,7 @@ async def stop_generator(
 
 @router.post("/tick", status_code=status.HTTP_200_OK)
 async def generator_tick(
+    user: User = Depends(requires(PERM_GENERATOR)),
     gen: BrewLogGenerator = Depends(_generator),
 ) -> dict[str, object]:
     """Emit one batch immediately — convenience for testing / manual demo."""

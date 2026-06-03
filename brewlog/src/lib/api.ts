@@ -6,6 +6,7 @@ const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 export async function api<T = unknown>(
   path: string,
   init: RequestInit = {},
+  retry = true,
 ): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -15,6 +16,16 @@ export async function api<T = unknown>(
       ...(init.headers ?? {}),
     },
   });
+  const canRefresh = path !== "/api/v1/auth/refresh" && path !== "/api/v1/auth/login/verify-mfa";
+  if (res.status === 401 && retry && canRefresh) {
+    const refreshed = await fetch(`${BASE}/api/v1/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (refreshed.ok) return api<T>(path, init, false);
+    window.dispatchEvent(new CustomEvent("brewlog:session-expired"));
+  }
   if (!res.ok) {
     const body = await res.text();
     const err = new Error(body || res.statusText) as Error & { status: number };

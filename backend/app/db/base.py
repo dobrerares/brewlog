@@ -26,10 +26,19 @@ _engine: AsyncEngine | None = None
 _factory: async_sessionmaker[AsyncSession] | None = None
 
 
+def async_database_url(database_url: str) -> str:
+    """Accept Railway-style Postgres URLs while using SQLAlchemy's asyncpg driver."""
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return database_url
+
+
 def init_engine(database_url: str | None = None) -> AsyncEngine:
     """Create the global engine. Call once at app startup."""
     global _engine, _factory
-    url = database_url or os.environ["DATABASE_URL"]
+    url = async_database_url(database_url or os.environ["DATABASE_URL"])
     _engine = create_async_engine(url, pool_pre_ping=True, future=True)
     _factory = async_sessionmaker(_engine, expire_on_commit=False, class_=AsyncSession)
     return _engine

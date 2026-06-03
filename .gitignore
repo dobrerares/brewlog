@@ -8,6 +8,10 @@ __pycache__/
 venv/
 env/
 node_modules/
+.claude/
+.clone/
+*.cookies
+*.log
 
 # Environment files
 .env
