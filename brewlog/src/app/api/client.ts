@@ -60,6 +60,46 @@ export interface Page<T> {
   total_pages: number
 }
 
+type PageResponse<T> = Page<T> | T[]
+
+function pageCount(total: number, pageSize: number): number {
+  if (pageSize <= 0) return 0
+  return Math.ceil(total / pageSize)
+}
+
+function normalizePage<T>(response: PageResponse<T>, page: number, pageSize: number): Page<T> {
+  if (!Array.isArray(response) && typeof response === 'object' && response !== null) {
+    const candidate = response as Partial<Page<T>>
+    if (Array.isArray(candidate.items)) {
+      const total = typeof candidate.total === 'number' ? candidate.total : candidate.items.length
+      const normalizedPageSize =
+        typeof candidate.page_size === 'number' ? candidate.page_size : pageSize
+
+      return {
+        items: candidate.items,
+        total,
+        page: typeof candidate.page === 'number' ? candidate.page : page,
+        page_size: normalizedPageSize,
+        total_pages:
+          typeof candidate.total_pages === 'number'
+            ? candidate.total_pages
+            : pageCount(total, normalizedPageSize),
+      }
+    }
+  }
+
+  const allItems = Array.isArray(response) ? response : []
+  const start = (page - 1) * pageSize
+
+  return {
+    items: allItems.slice(start, start + pageSize),
+    total: allItems.length,
+    page,
+    page_size: pageSize,
+    total_pages: pageCount(allItems.length, pageSize),
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   let response: Response
   try {
@@ -97,12 +137,14 @@ export async function fetchBrewLogsPage(
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   if (filters.beanId) params.set('bean_id', filters.beanId)
   if (filters.method) params.set('method', filters.method)
-  return request<Page<ServerBrewLog>>(`/api/v1/brewlogs?${params}`)
+  const response = await request<PageResponse<ServerBrewLog>>(`/api/v1/brewlogs?${params}`)
+  return normalizePage(response, page, pageSize)
 }
 
 export async function fetchBeans(page = 1, pageSize = 50): Promise<Page<ServerBean>> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-  return request<Page<ServerBean>>(`/api/v1/beans?${params}`)
+  const response = await request<PageResponse<ServerBean>>(`/api/v1/beans?${params}`)
+  return normalizePage(response, page, pageSize)
 }
 
 /**
@@ -193,10 +235,11 @@ export async function fetchRefs(): Promise<{
   brewerId: string | null
   grinderId: string | null
 }> {
+  type EquipmentRef = { id: string; type: string }
   const [beans, equipment] = await Promise.all([
-    request<{ items: Array<{ id: string }> }>('/api/v1/beans?page_size=1'),
-    request<{ items: Array<{ id: string; type: string }> }>(
-      '/api/v1/equipment?page_size=50'
+    fetchBeans(1, 1),
+    request<PageResponse<EquipmentRef>>('/api/v1/equipment?page_size=50').then((response) =>
+      normalizePage(response, 1, 50)
     ),
   ])
   const brewer = equipment.items.find((e) => e.type === 'Brewer') ?? null
