@@ -121,3 +121,55 @@ async def test_mfa_login_requires_totp_and_magic_link(client: AsyncClient) -> No
         json={"totp_code": backup_code, "email_token": backup_email_token},
     )
     assert backup_verified.status_code == 200, backup_verified.text
+
+
+async def test_password_reset_request_sends_email_and_changes_password(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[tuple[str, str, int]] = []
+
+    async def fake_send(user, reset_link: str, expires_minutes: int) -> None:
+        sent.append((user.email, reset_link, expires_minutes))
+
+    monkeypatch.setattr("app.api.auth._new_email_token", lambda: "reset-token-123")
+    monkeypatch.setattr("app.api.auth._send_password_reset_email", fake_send)
+
+    await client.post("/api/v1/auth/register", json={"email": "reset@x.com", "password": "hunter2"})
+    requested = await client.post("/api/v1/auth/password-reset/request", json={"email": "reset@x.com"})
+
+    assert requested.status_code == 202, requested.text
+    assert requested.json() == {"email_sent": True}
+    assert sent == [("reset@x.com", "http://test/password-reset/confirm?token=reset-token-123", 60)]
+
+    confirmed = await client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": "reset-token-123", "new_password": "hunter3"},
+    )
+    assert confirmed.status_code == 204, confirmed.text
+
+    old_login = await client.post("/api/v1/auth/login", json={"email": "reset@x.com", "password": "hunter2"})
+    assert old_login.status_code == 401
+    new_login = await client.post("/api/v1/auth/login", json={"email": "reset@x.com", "password": "hunter3"})
+    assert new_login.status_code == 200, new_login.text
+
+    reused = await client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": "reset-token-123", "new_password": "hunter4"},
+    )
+    assert reused.status_code == 400
+
+
+async def test_password_reset_request_for_unknown_email_is_generic(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[str] = []
+
+    async def fake_send(user, reset_link: str, expires_minutes: int) -> None:
+        sent.append(reset_link)
+
+    monkeypatch.setattr("app.api.auth._send_password_reset_email", fake_send)
+
+    requested = await client.post("/api/v1/auth/password-reset/request", json={"email": "missing@x.com"})
+
+    assert requested.status_code == 202, requested.text
+    assert requested.json() == {"email_sent": True}
+    assert sent == []

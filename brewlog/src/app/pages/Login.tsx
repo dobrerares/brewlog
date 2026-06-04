@@ -170,9 +170,9 @@ export function Login() {
           </Link>
         </p>
         <p className="text-center mt-3 text-sm" style={{ color: 'var(--text-muted)' }}>
-          Have an admin reset token?{' '}
-          <Link to="/password-reset/confirm" className="font-medium hover:underline" style={{ color: 'var(--primary-brown)' }}>
-            Reset password
+          Forgot your password?{' '}
+          <Link to="/password-reset" className="font-medium hover:underline" style={{ color: 'var(--primary-brown)' }}>
+            Get a reset link
           </Link>
         </p>
       </div>

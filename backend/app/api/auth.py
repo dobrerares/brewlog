@@ -90,6 +90,14 @@ class PasswordResetConfirmIn(BaseModel):
     new_password: str = Field(min_length=6, max_length=200)
 
 
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequestOut(BaseModel):
+    email_sent: bool = True
+
+
 class UserOut(BaseModel):
     id: UUID
     email: EmailStr
@@ -184,6 +192,14 @@ def _allow_dev_magic_link() -> bool:
     return os.environ.get("ALLOW_DEV_MAGIC_LINK", "true").lower() in {"1", "true", "yes"}
 
 
+def _password_reset_minutes() -> int:
+    try:
+        value = int(os.environ.get("PASSWORD_RESET_TOKEN_MINUTES", "60"))
+    except ValueError:
+        return 60
+    return max(1, min(value, 24 * 60))
+
+
 def _app_base_url(request: Request) -> str:
     configured = os.environ.get("APP_BASE_URL")
     if configured:
@@ -216,6 +232,36 @@ async def _send_magic_link_email(user: User, magic_link: str) -> None:
         )
     if response.status_code >= 400:
         raise HTTPException(502, detail="could not send login email")
+
+
+async def _send_password_reset_email(user: User, reset_link: str, expires_minutes: int) -> None:
+    api_key = os.environ.get("RESEND_API_KEY")
+    sender = os.environ.get("RESEND_FROM_EMAIL")
+    if not api_key or not sender:
+        print(f"[password-reset] {user.email}: {reset_link}")
+        return
+    payload = {
+        "from": sender,
+        "to": [user.email],
+        "subject": "Reset your BrewLog password",
+        "html": (
+            "<p>Use this link to reset your BrewLog password:</p>"
+            f'<p><a href="{html.escape(reset_link)}">Reset password</a></p>'
+            f"<p>This link expires in {expires_minutes} minutes. If you did not request it, you can ignore this email.</p>"
+        ),
+        "text": (
+            f"Use this link to reset your BrewLog password: {reset_link}\n\n"
+            f"This link expires in {expires_minutes} minutes. If you did not request it, you can ignore this email."
+        ),
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        )
+    if response.status_code >= 400:
+        raise HTTPException(502, detail="could not send password reset email")
 
 
 async def _issue_login_email_code(db: AsyncSession, request: Request, user: User) -> str:
@@ -343,6 +389,56 @@ async def resend_login_email_code(
     await write_audit(db, user_id=user.id, action="LOGIN_EMAIL_CODE_RESEND", status="OK", ip_address=_client_ip(request))
     await db.commit()
     return LoginMfaRequiredOut(dev_magic_link=magic_link if _allow_dev_magic_link() else None)
+
+
+@router.post("/password-reset/request", response_model=PasswordResetRequestOut, status_code=202)
+async def request_password_reset(
+    payload: PasswordResetRequestIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> PasswordResetRequestOut:
+    user = await UserRepository(db).find_by_email(payload.email)
+    if user is None:
+        await write_audit(
+            db,
+            user_id=None,
+            action="PASSWORD_RESET_REQUEST",
+            status="OK",
+            ip_address=_client_ip(request),
+        )
+        await db.commit()
+        return PasswordResetRequestOut()
+
+    token = _new_email_token()
+    now = datetime.now(timezone.utc)
+    expires_minutes = _password_reset_minutes()
+    await db.execute(
+        PasswordResetToken.__table__.update()
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.created_by_user_id.is_(None),
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+    )
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash(token),
+            expires_at=now + timedelta(minutes=expires_minutes),
+        )
+    )
+    reset_link = f"{_app_base_url(request)}/password-reset/confirm?token={token}"
+    await _send_password_reset_email(user, reset_link, expires_minutes)
+    await write_audit(
+        db,
+        user_id=user.id,
+        action="PASSWORD_RESET_REQUEST",
+        status="OK",
+        ip_address=_client_ip(request),
+    )
+    await db.commit()
+    return PasswordResetRequestOut()
 
 
 @router.post("/login/verify-mfa", response_model=UserOut)

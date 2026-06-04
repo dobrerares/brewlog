@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigationType } from 'react-router'
 import { Landing } from './app/pages/Landing'
 import { Login } from './app/pages/Login'
@@ -15,6 +14,7 @@ import ObservedUsers from '@/pages/admin/ObservedUsers'
 import AuditLogExplorer from '@/pages/admin/AuditLogExplorer'
 import SecurityTools from '@/pages/admin/SecurityTools'
 import AccountSecurity from '@/pages/AccountSecurity'
+import PasswordResetRequest from '@/pages/PasswordResetRequest'
 import PasswordResetConfirm from '@/pages/PasswordResetConfirm'
 import { RequireAuth } from '@/components/RequireAuth'
 import { RequirePerm } from '@/components/RequirePerm'
@@ -23,33 +23,19 @@ import './index.css'
 function AnimatedRoutes() {
   const location = useLocation()
   const navigationType = useNavigationType()
-  const [displayLocation, setDisplayLocation] = useState(location)
-  const [transitionStage, setTransitionStage] = useState<'page-enter' | 'page-exit'>('page-enter')
-  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back'>('forward')
-
-  useEffect(() => {
-    const current = `${location.pathname}${location.search}${location.hash}`
-    const displayed = `${displayLocation.pathname}${displayLocation.search}${displayLocation.hash}`
-
-    if (current !== displayed) {
-      setTransitionDirection(navigationType === 'POP' ? 'back' : 'forward')
-      setTransitionStage('page-exit')
-      const timeoutId = window.setTimeout(() => {
-        setDisplayLocation(location)
-        setTransitionStage('page-enter')
-      }, 160)
-
-      return () => window.clearTimeout(timeoutId)
-    }
-  }, [location, displayLocation, navigationType])
+  const transitionDirection = navigationType === 'POP' ? 'back' : 'forward'
 
   return (
-    <div className={`route-shell ${transitionStage} direction-${transitionDirection}`}>
-      <Routes location={displayLocation}>
+    <div
+      key={location.key}
+      className={`route-shell page-enter direction-${transitionDirection}`}
+    >
+      <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/login/mfa" element={<LoginMfa />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/password-reset" element={<PasswordResetRequest />} />
         <Route path="/password-reset/confirm" element={<PasswordResetConfirm />} />
         <Route path="/brews" element={<BrewList />} />
         <Route path="/brew/new" element={<BrewForm />} />

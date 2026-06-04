@@ -1,22 +1,15 @@
-import { type FormEvent, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
-import { AlertCircle, KeyRound } from 'lucide-react'
+import { type FormEvent, useState } from 'react'
+import { AlertCircle, Mail } from 'lucide-react'
+import { Link } from 'react-router'
 import { api } from '@/lib/api'
 import { Logo } from '@/app/components/Logo'
 import { ThemeToggle } from '@/app/components/ThemeToggle'
 
-export default function PasswordResetConfirm() {
-  const [searchParams] = useSearchParams()
-  const [token, setToken] = useState(() => searchParams.get('token') ?? '')
-  const [newPassword, setNewPassword] = useState('')
+export default function PasswordResetRequest() {
+  const [email, setEmail] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-
-  useEffect(() => {
-    const tokenFromUrl = searchParams.get('token')
-    if (tokenFromUrl) setToken(tokenFromUrl)
-  }, [searchParams])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -24,15 +17,13 @@ export default function PasswordResetConfirm() {
     setError(null)
     setSubmitting(true)
     try {
-      await api('/api/v1/auth/password-reset/confirm', {
+      await api('/api/v1/auth/password-reset/request', {
         method: 'POST',
-        body: JSON.stringify({ token: token.trim(), new_password: newPassword }),
+        body: JSON.stringify({ email: email.trim() }),
       })
-      setMessage('Password changed. You can now log in with the new password.')
-      setToken('')
-      setNewPassword('')
+      setMessage('If that email is registered, a reset link will arrive shortly.')
     } catch {
-      setError('The reset token is invalid, expired, or already used.')
+      setError('Could not send a reset email. Try again in a moment.')
     } finally {
       setSubmitting(false)
     }
@@ -44,39 +35,34 @@ export default function PasswordResetConfirm() {
       <div className="w-full max-w-md animate-fadeIn">
         <div className="text-center mb-8"><Logo size="large" link={false} /></div>
         <div className="rounded-xl border p-8" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
-          <h2 className="text-2xl mb-6" style={{ fontFamily: 'var(--font-heading)' }}>Reset password</h2>
+          <h2 className="text-2xl mb-2" style={{ fontFamily: 'var(--font-heading)' }}>Reset password</h2>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+            Enter your email and BrewLog will send a reset link.
+          </p>
           <form onSubmit={submit} className="space-y-5">
             <div>
-              <label htmlFor="reset-token" className="block mb-2">Reset token</label>
+              <label htmlFor="reset-email" className="block text-sm mb-2">
+                Email
+              </label>
               <input
-                id="reset-token"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                className="w-full rounded-lg border px-4 py-2"
+                id="reset-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2"
                 style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)', borderColor: 'var(--border-color)' }}
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="new-password" className="block mb-2">New password</label>
-              <input
-                id="new-password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-lg border px-4 py-2"
-                style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)', borderColor: 'var(--border-color)' }}
-                minLength={6}
+                autoComplete="email"
                 required
               />
             </div>
             <button
+              type="submit"
               disabled={submitting}
               className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-white hover:opacity-90 disabled:opacity-60"
               style={{ backgroundColor: 'var(--primary-brown)' }}
             >
-              <KeyRound size={18} />
-              <span>{submitting ? 'Changing...' : 'Change password'}</span>
+              <Mail size={18} />
+              <span>{submitting ? 'Sending...' : 'Send reset link'}</span>
             </button>
           </form>
           {message && <p className="mt-4 text-sm" style={{ color: 'var(--green)' }}>{message}</p>}
@@ -89,7 +75,7 @@ export default function PasswordResetConfirm() {
           <p className="mt-5 text-sm" style={{ color: 'var(--text-muted)' }}>
             <Link to="/login" className="underline">Back to login</Link>
             <span className="mx-2">|</span>
-            <Link to="/password-reset" className="underline">Request a new link</Link>
+            <Link to="/password-reset/confirm" className="underline">Use a reset token</Link>
           </p>
         </div>
       </div>

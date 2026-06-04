@@ -21,6 +21,7 @@ CORS_ORIGINS=https://<frontend-domain>
 AUTH_COOKIE_SECURE=true
 AUTH_COOKIE_SAMESITE=none
 APP_BASE_URL=https://<frontend-domain>
+PASSWORD_RESET_TOKEN_MINUTES=60
 ALLOW_DEV_MAGIC_LINK=false
 ALLOW_DEV_TOTP_CODE=false
 RESEND_API_KEY=<optional-resend-key>

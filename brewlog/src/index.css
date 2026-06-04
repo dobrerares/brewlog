@@ -172,7 +172,7 @@ body, nav, .rounded-xl, .rounded-lg, input, select, textarea, th, td {
 
 @keyframes routeEnter {
   from {
-    opacity: 0;
+    opacity: 0.96;
     transform: translateY(10px) scale(0.995);
   }
   to {
@@ -187,14 +187,14 @@ body, nav, .rounded-xl, .rounded-lg, input, select, textarea, th, td {
     transform: translateY(0) scale(1);
   }
   to {
-    opacity: 0;
+    opacity: 0.96;
     transform: translateY(-6px) scale(0.997);
   }
 }
 
 @keyframes routeEnterForward {
   from {
-    opacity: 0;
+    opacity: 0.96;
     transform: translateX(16px) translateY(6px) scale(0.996);
   }
   to {
@@ -205,7 +205,7 @@ body, nav, .rounded-xl, .rounded-lg, input, select, textarea, th, td {
 
 @keyframes routeEnterBack {
   from {
-    opacity: 0;
+    opacity: 0.96;
     transform: translateX(-16px) translateY(6px) scale(0.996);
   }
   to {
@@ -220,7 +220,7 @@ body, nav, .rounded-xl, .rounded-lg, input, select, textarea, th, td {
     transform: translateX(0) scale(1);
   }
   to {
-    opacity: 0;
+    opacity: 0.96;
     transform: translateX(-10px) scale(0.998);
   }
 }
@@ -231,7 +231,7 @@ body, nav, .rounded-xl, .rounded-lg, input, select, textarea, th, td {
     transform: translateX(0) scale(1);
   }
   to {
-    opacity: 0;
+    opacity: 0.96;
     transform: translateX(10px) scale(0.998);
   }
 }
