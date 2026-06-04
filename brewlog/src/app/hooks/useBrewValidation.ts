@@ -7,7 +7,7 @@ interface ValidationErrors {
 const REQUIRED_FIELDS = ['bean', 'method', 'date', 'dose', 'water', 'temp', 'time', 'grind', 'grinder', 'rating', 'taste']
 
 export function useBrewValidation() {
-  const validateField = (field: string, value: any): string => {
+  const validateField = (field: string, value: BrewLog[keyof BrewLog] | null | undefined): string => {
     // Required field check
     if (REQUIRED_FIELDS.includes(field) && (value === '' || value === null || value === undefined || value === 0)) {
       return `${field.charAt(0).toUpperCase() + field.slice(1)} is required`

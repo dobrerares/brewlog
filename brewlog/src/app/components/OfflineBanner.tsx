@@ -17,24 +17,29 @@ export function OfflineBanner({ online, onSynced }: Props) {
   const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
-    setPending(queueSize())
+    const timer = window.setTimeout(() => setPending(queueSize()), 0)
+    return () => window.clearTimeout(timer)
   }, [online])
 
   useEffect(() => {
     if (!online || pending === 0) return
     let cancelled = false
-    setSyncing(true)
-    syncQueue()
-      .then(() => {
-        if (cancelled) return
-        setPending(queueSize())
-        onSynced?.()
-      })
-      .finally(() => {
-        if (!cancelled) setSyncing(false)
-      })
+    const timer = window.setTimeout(() => {
+      if (cancelled) return
+      setSyncing(true)
+      syncQueue()
+        .then(() => {
+          if (cancelled) return
+          setPending(queueSize())
+          onSynced?.()
+        })
+        .finally(() => {
+          if (!cancelled) setSyncing(false)
+        })
+    }, 0)
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
   }, [online, pending, onSynced])
 

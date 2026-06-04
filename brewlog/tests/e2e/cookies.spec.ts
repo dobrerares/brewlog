@@ -51,6 +51,7 @@ test.describe('Cookie-Based Features', () => {
     const firstRow = page.locator('table tbody tr').first()
     await firstRow.locator('a').first().click()
     await page.waitForURL(/\/brew\/\w+/)
+    await expect(page.locator('h1')).not.toHaveText('Brew Logs')
 
     // Get the bean name from detail page h1
     const beanName = await page.locator('h1').innerText()

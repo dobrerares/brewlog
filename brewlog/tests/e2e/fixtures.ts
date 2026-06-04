@@ -115,10 +115,11 @@ export async function dismissCookieBanner(page: Page) {
 }
 
 export async function findBrewRowAcrossPages(page: Page, pattern: RegExp, maxPages = 6) {
+  await expect(page.locator('table')).toBeVisible()
+
   for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
     const row = page.locator('table tbody tr').filter({ hasText: pattern }).first()
-    if (await row.count()) {
-      await expect(row).toBeVisible()
+    if (await row.isVisible().catch(() => false)) {
       return row
     }
 

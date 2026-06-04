@@ -8,6 +8,19 @@ import { useActivityTracker } from '../hooks/useActivityTracker'
 import { Navbar } from '../components/Navbar'
 import { StarRating } from '../components/StarRating'
 import { FlavorTag } from '../components/FlavorTag'
+import type { BrewLog } from '../data/mockData'
+
+type BrewFormData = Omit<BrewLog, 'id'>
+
+function ErrorMessage({ message }: { message?: string }) {
+  if (!message) return null
+  return (
+    <div className="flex items-center gap-1 mt-1 text-xs text-red-600">
+      <AlertCircle size={12} />
+      <span>{message}</span>
+    </div>
+  )
+}
 
 export function BrewForm() {
   const { id } = useParams()
@@ -16,9 +29,9 @@ export function BrewForm() {
   const { validateForm } = useBrewValidation()
   const { getBrew, createBrew, updateBrew } = useBrewCRUD()
   const { trackVisit } = useActivityTracker()
-  useEffect(() => { trackVisit(isEdit ? `/brew/${id}/edit` : '/brew/new') }, [])
+  useEffect(() => { trackVisit(isEdit ? `/brew/${id}/edit` : '/brew/new') }, [id, isEdit, trackVisit])
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<BrewFormData>({
     bean: '',
     method: '',
     date: new Date().toISOString().split('T')[0],
@@ -32,7 +45,7 @@ export function BrewForm() {
     yield: 0,
     rating: 0,
     taste: 'Balanced',
-    flavorTags: [] as string[],
+    flavorTags: [],
     notes: ''
   })
 
@@ -41,6 +54,7 @@ export function BrewForm() {
 
   useEffect(() => {
     if (isEdit && id) {
+      const timer = window.setTimeout(() => {
       const brew = getBrew(id)
       if (brew) {
         setFormData({
@@ -61,6 +75,8 @@ export function BrewForm() {
           notes: brew.notes || ''
         })
       }
+      }, 0)
+      return () => window.clearTimeout(timer)
     }
   }, [isEdit, id, getBrew])
 
@@ -81,7 +97,7 @@ export function BrewForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const validationErrors = validateForm(formData as any)
+    const validationErrors = validateForm(formData)
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
       const allTouched: Record<string, boolean> = {}
@@ -89,27 +105,13 @@ export function BrewForm() {
       setTouched(prev => ({ ...prev, ...allTouched }))
       return
     }
-    const brewData = {
-      ...formData,
-      taste: formData.taste as 'Balanced' | 'Sour' | 'Bitter' | 'Watery' | 'Astringent'
-    }
     if (isEdit && id) {
-      updateBrew(id, brewData)
+      updateBrew(id, formData)
       navigate(`/brew/${id}`)
     } else {
-      createBrew(brewData)
+      createBrew(formData)
       navigate('/brews')
     }
-  }
-
-  const ErrorMessage = ({ message }: { message?: string }) => {
-    if (!message) return null
-    return (
-      <div className="flex items-center gap-1 mt-1 text-xs text-red-600">
-        <AlertCircle size={12} />
-        <span>{message}</span>
-      </div>
-    )
   }
 
   const inputClass = (field: string) =>

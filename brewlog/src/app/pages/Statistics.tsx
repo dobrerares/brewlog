@@ -14,7 +14,7 @@ export function Statistics() {
   const { getBrews, deleteBrew } = useBrewCRUD()
   const brews = getBrews()
   const { trackVisit } = useActivityTracker()
-  useEffect(() => { trackVisit('/dashboard') }, [])
+  useEffect(() => { trackVisit('/dashboard') }, [trackVisit])
 
   const [selectedBrewDNA, setSelectedBrewDNA] = useState<string | null>(brews[0]?.id || null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)

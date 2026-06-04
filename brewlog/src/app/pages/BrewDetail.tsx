@@ -14,11 +14,19 @@ export function BrewDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { getBrew, deleteBrew } = useBrewCRUD()
+  const { setLastViewed, trackVisit } = useActivityTracker()
   const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   const brew = id ? getBrew(id) : null
+  const b = brew as BrewLog | null
 
-  if (!brew) {
+  useEffect(() => {
+    if (!id || !b) return
+    trackVisit(`/brew/${id}`)
+    setLastViewed({ id, bean: b.bean })
+  }, [b, id, setLastViewed, trackVisit])
+
+  if (!b) {
     return (
       <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
         <Navbar type="app" />
@@ -32,15 +40,9 @@ export function BrewDetail() {
     )
   }
 
-  const b = brew as BrewLog
-  const { setLastViewed, trackVisit } = useActivityTracker()
-  useEffect(() => {
-    trackVisit(`/brew/${id}`)
-    setLastViewed({ id: id!, bean: b.bean })
-  }, [id])
-
   const handleDelete = () => {
-    deleteBrew(id!)
+    if (!id) return
+    deleteBrew(id)
     setShowDeleteModal(false)
     navigate('/brews')
   }

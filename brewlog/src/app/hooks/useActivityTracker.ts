@@ -13,8 +13,11 @@ export function useActivityTracker() {
   const [lastViewed, setLastViewedCookie] = useCookie<LastViewed | null>('brewlog_last_viewed', null)
 
   const trackVisit = useCallback((path: string) => {
-    setVisits({ ...visits, [path]: (visits[path] || 0) + 1 })
-  }, [visits, setVisits])
+    setVisits((currentVisits) => ({
+      ...currentVisits,
+      [path]: (currentVisits[path] || 0) + 1,
+    }))
+  }, [setVisits])
 
   const setLastViewed = useCallback((brew: LastViewed) => {
     setLastViewedCookie(brew)

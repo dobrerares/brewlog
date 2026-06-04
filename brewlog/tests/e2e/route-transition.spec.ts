@@ -1,8 +1,20 @@
 import { expect, test, type Page } from '@playwright/test'
 
 async function routeShellOpacity(page: Page) {
-  return page.locator('.route-shell').evaluate((element) => {
-    return Number(window.getComputedStyle(element).opacity)
+  return page.evaluate(() => {
+    return new Promise<number>((resolve) => {
+      requestAnimationFrame(() => {
+        const shells = [...document.querySelectorAll<HTMLElement>('.route-shell')]
+          .filter((element) => element.isConnected)
+
+        if (shells.length === 0) {
+          resolve(0)
+          return
+        }
+
+        resolve(Math.max(...shells.map((element) => Number(window.getComputedStyle(element).opacity))))
+      })
+    })
   })
 }
 
@@ -37,7 +49,7 @@ test('keeps the app visible while switching routes and browser tabs', async ({ p
     samples.push(await routeShellOpacity(page))
   }
 
-  expect(Math.min(...samples)).toBeGreaterThan(0.9)
+  expect(Math.min(...samples), `route-shell opacity samples: ${samples.join(', ')}`).toBeGreaterThan(0.9)
 
   const otherTab = await context.newPage()
   await otherTab.goto('about:blank')

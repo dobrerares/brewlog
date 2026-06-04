@@ -6,6 +6,8 @@
  * so you can scale (linear vs log vs sqrt — your call). 50 buckets = last hour.
  */
 
+import { useEffect, useState } from "react";
+
 type Action = { action: string; status: string; created_at: string };
 
 type Props = {
@@ -15,7 +17,13 @@ type Props = {
 };
 
 export function Sparkline({ actions, bucketCount = 50, bucketMs = 60_000 }: Props) {
-  const now = Date.now();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setNow(Date.now()), 0);
+    return () => window.clearTimeout(timer);
+  }, [actions]);
+
   const buckets = new Array<number>(bucketCount).fill(0);
 
   for (const a of actions) {

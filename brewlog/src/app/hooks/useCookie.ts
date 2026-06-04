@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type SetStateAction } from 'react'
 
 function getCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
@@ -13,7 +13,7 @@ function deleteCookieRaw(name: string) {
   document.cookie = `${name}=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT`
 }
 
-export function useCookie<T>(name: string, defaultValue: T): [T, (value: T) => void, () => void] {
+export function useCookie<T>(name: string, defaultValue: T): [T, (value: SetStateAction<T>) => void, () => void] {
   const [storedValue, setStoredValue] = useState<T>(() => {
     const raw = getCookie(name)
     if (raw === null) return defaultValue
@@ -24,10 +24,13 @@ export function useCookie<T>(name: string, defaultValue: T): [T, (value: T) => v
     }
   })
 
-  const setValue = useCallback((value: T) => {
-    const toStore = typeof value === 'string' ? value : JSON.stringify(value)
-    setCookieRaw(name, toStore)
-    setStoredValue(value)
+  const setValue = useCallback((value: SetStateAction<T>) => {
+    setStoredValue((previous) => {
+      const nextValue = typeof value === 'function' ? (value as (current: T) => T)(previous) : value
+      const toStore = typeof nextValue === 'string' ? nextValue : JSON.stringify(nextValue)
+      setCookieRaw(name, toStore)
+      return nextValue
+    })
   }, [name])
 
   const removeCookie = useCallback(() => {

@@ -13,7 +13,7 @@ export function BrewList() {
   const { getBrews, deleteBrew } = useBrewCRUD()
   const { currentItems, currentPage, totalPages, nextPage, prevPage } = useBrewPagination(getBrews(), 10)
   const { trackVisit } = useActivityTracker()
-  useEffect(() => { trackVisit('/brews') }, [])
+  useEffect(() => { trackVisit('/brews') }, [trackVisit])
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 

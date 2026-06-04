@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Play, Square } from 'lucide-react'
 import { generatorStatus, startGenerator, stopGenerator } from '../api/client'
 
@@ -17,7 +17,7 @@ export function GeneratorControls({ disabled }: Props) {
   const [items, setItems] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     try {
       const status = await generatorStatus()
       setRunning(status.running)
@@ -27,13 +27,18 @@ export function GeneratorControls({ disabled }: Props) {
     } catch (err) {
       setError((err as Error).message)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    void refresh()
+    if (disabled) return
+
+    const firstRefresh = window.setTimeout(refresh, 0)
     const timer = window.setInterval(refresh, 3000)
-    return () => window.clearInterval(timer)
-  }, [])
+    return () => {
+      window.clearTimeout(firstRefresh)
+      window.clearInterval(timer)
+    }
+  }, [disabled, refresh])
 
   const toggle = async () => {
     try {

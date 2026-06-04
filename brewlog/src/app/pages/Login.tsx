@@ -12,11 +12,21 @@ interface FormErrors {
   password?: string
 }
 
+function ErrorMessage({ message }: { message?: string }) {
+  if (!message) return null
+  return (
+    <div className="flex items-center gap-1 mt-1 text-xs text-red-600">
+      <AlertCircle size={12} />
+      <span>{message}</span>
+    </div>
+  )
+}
+
 export function Login() {
   const navigate = useNavigate()
   const { login } = useAuth()
   const { trackVisit } = useActivityTracker()
-  useEffect(() => { trackVisit('/login') }, [])
+  useEffect(() => { trackVisit('/login') }, [trackVisit])
 
   const [formValues, setFormValues] = useState({ email: '', password: '' })
   const [errors, setErrors] = useState<FormErrors>({})
@@ -72,16 +82,6 @@ export function Login() {
     } catch {
       setErrors({ password: 'Invalid credentials' })
     }
-  }
-
-  const ErrorMessage = ({ message }: { message?: string }) => {
-    if (!message) return null
-    return (
-      <div className="flex items-center gap-1 mt-1 text-xs text-red-600">
-        <AlertCircle size={12} />
-        <span>{message}</span>
-      </div>
-    )
   }
 
   return (

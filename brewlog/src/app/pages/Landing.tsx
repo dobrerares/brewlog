@@ -10,7 +10,7 @@ export function Landing() {
   const { getBrew } = useBrewCRUD()
   const lastBrew = lastViewed ? getBrew(lastViewed.id) : null
 
-  useEffect(() => { trackVisit('/') }, [])
+  useEffect(() => { trackVisit('/') }, [trackVisit])
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>

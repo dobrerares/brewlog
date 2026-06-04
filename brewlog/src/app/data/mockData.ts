@@ -17,7 +17,7 @@ export interface BrewLog {
   notes: string;
 }
 
-export let mockBrewLogs: BrewLog[] = [
+export const mockBrewLogs: BrewLog[] = [
   {
     id: '1',
     date: '2026-03-12',

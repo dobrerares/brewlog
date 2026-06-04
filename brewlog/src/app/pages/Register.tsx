@@ -14,11 +14,21 @@ interface FormErrors {
   form?: string
 }
 
+function ErrorMessage({ message }: { message?: string }) {
+  if (!message) return null
+  return (
+    <div className="flex items-center gap-1 mt-1 text-xs text-red-600">
+      <AlertCircle size={12} />
+      <span>{message}</span>
+    </div>
+  )
+}
+
 export function Register() {
   const navigate = useNavigate()
   const { register } = useAuth()
   const { trackVisit } = useActivityTracker()
-  useEffect(() => { trackVisit('/register') }, [])
+  useEffect(() => { trackVisit('/register') }, [trackVisit])
 
   const [formValues, setFormValues] = useState({
     name: '', email: '', password: '', confirmPassword: ''
@@ -113,16 +123,6 @@ export function Register() {
   }
 
   const passwordStrength = getPasswordStrength(formValues.password)
-
-  const ErrorMessage = ({ message }: { message?: string }) => {
-    if (!message) return null
-    return (
-      <div className="flex items-center gap-1 mt-1 text-xs text-red-600">
-        <AlertCircle size={12} />
-        <span>{message}</span>
-      </div>
-    )
-  }
 
   const inputStyle = (field: string) => ({
     backgroundColor: 'var(--background)',
