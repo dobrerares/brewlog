@@ -9,6 +9,7 @@ from bson import ObjectId, errors as bson_errors
 from fastapi import APIRouter, Cookie, WebSocket, WebSocketDisconnect
 
 from app.auth.sessions import lookup_session
+from app.auth.tokens import TokenError, jwt_decode
 from app.db.base import session_factory
 from app.db.mongo import get_db as get_mongo_db
 from app.repositories.chat import ChatRepository
@@ -22,23 +23,42 @@ router = APIRouter()
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, session_id: str | None = Cookie(default=None)):
-    if session_id is None:
-        await websocket.close(code=4401)
-        return
-    try:
-        sid = UUID(session_id)
-    except ValueError:
+async def websocket_endpoint(
+    websocket: WebSocket,
+    access_token: str | None = Cookie(default=None),
+    session_id: str | None = Cookie(default=None),
+):
+    user_id: UUID | None = None
+    sid: UUID | None = None
+    if access_token:
+        try:
+            claims = jwt_decode(access_token, "access")
+            user_id = UUID(claims["sub"])
+        except (KeyError, ValueError, TokenError):
+            await websocket.close(code=4401)
+            return
+    elif session_id:
+        try:
+            sid = UUID(session_id)
+        except ValueError:
+            await websocket.close(code=4401)
+            return
+    else:
         await websocket.close(code=4401)
         return
 
     factory = session_factory()
     async with factory() as db:
-        sess = await lookup_session(db, sid)
-        if sess is None:
-            await websocket.close(code=4401)
-            return
-        user = await UserRepository(db).get_with_perms(sess.user_id)
+        if user_id is None:
+            if sid is None:
+                await websocket.close(code=4401)
+                return
+            sess = await lookup_session(db, sid)
+            if sess is None:
+                await websocket.close(code=4401)
+                return
+            user_id = sess.user_id
+        user = await UserRepository(db).get_with_perms(user_id)
         if user is None:
             await websocket.close(code=4401)
             return

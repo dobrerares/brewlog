@@ -49,6 +49,10 @@ async def test_ws_subscribes_to_generator_broadcasts(monkeypatch: pytest.MonkeyP
     async def fake_lookup_session(_db: object, _session_id: object) -> SimpleNamespace:
         return SimpleNamespace(user_id=user_id)
 
+    def fake_jwt_decode(_token: str, expected_type: str) -> dict[str, str]:
+        assert expected_type == "access"
+        return {"sub": str(user_id)}
+
     class FakeUserRepository:
         def __init__(self, _db: object) -> None:
             pass
@@ -58,11 +62,12 @@ async def test_ws_subscribes_to_generator_broadcasts(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(ws_api, "session_factory", lambda: lambda: fake_session_factory())
     monkeypatch.setattr(ws_api, "lookup_session", fake_lookup_session)
+    monkeypatch.setattr(ws_api, "jwt_decode", fake_jwt_decode)
     monkeypatch.setattr(ws_api, "UserRepository", FakeUserRepository)
     monkeypatch.setattr(ws_api, "get_mongo_db", lambda: object())
 
     websocket = FakeWebSocket()
-    task = asyncio.create_task(ws_api.websocket_endpoint(websocket, str(uuid4())))
+    task = asyncio.create_task(ws_api.websocket_endpoint(websocket, access_token="access"))
     await asyncio.wait_for(websocket.receive_started.wait(), timeout=1)
 
     assert websocket.accepted is True
