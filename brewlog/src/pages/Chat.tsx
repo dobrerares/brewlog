@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { AuthLoading } from "@/components/AuthLoading";
 import { useAuth } from "@/hooks/useAuth";
 import { useChatRooms, type Room } from "@/hooks/useChatRooms";
-import { useChatSocket, type Message } from "@/hooks/useChatSocket";
+import { useChatSocket, type IncomingFrame, type Message } from "@/hooks/useChatSocket";
 
 export default function Chat() {
-  const { user } = useAuth();
+  const { state, user } = useAuth();
   const { rooms } = useChatRooms();
   const [active, setActive] = useState<Room | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
 
-  const onFrame = useCallback((frame: any) => {
+  const onFrame = useCallback((frame: IncomingFrame) => {
     if (frame.type === "history") {
       setMessages(frame.messages.slice().reverse());
     } else if (frame.type === "message" && active && frame.room_id === active.id) {
@@ -23,12 +24,12 @@ export default function Chat() {
 
   useEffect(() => {
     if (!active) return;
-    setMessages([]);
     ws.join(active.id);
     return () => ws.leave(active.id);
   }, [active, ws]);
 
-  if (!user) return null;
+  if (state.status === "loading") return <AuthLoading />;
+  if (!user) return <AuthLoading message="Sign in to use chat." />;
   return (
     <div className="grid grid-cols-[200px_1fr] gap-4 p-4">
       <aside className="space-y-1">
@@ -36,7 +37,10 @@ export default function Chat() {
         {rooms.map((r) => (
           <button
             key={r.id}
-            onClick={() => setActive(r)}
+            onClick={() => {
+              setMessages([]);
+              setActive(r);
+            }}
             className={`block w-full rounded p-2 text-left ${
               active?.id === r.id ? "bg-amber-100" : "hover:bg-stone-100"
             }`}

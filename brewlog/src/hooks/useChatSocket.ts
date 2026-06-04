@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-type IncomingFrame =
+export type IncomingFrame =
   | { type: "ready"; user_id: string }
   | { type: "history"; room_id: string; messages: Message[] }
   | { type: "message"; room_id: string; msg: Message };

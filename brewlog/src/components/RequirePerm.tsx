@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { AuthLoading } from "@/components/AuthLoading";
 import { useAuth } from "@/hooks/useAuth";
 
 export function RequirePerm({
@@ -10,7 +11,7 @@ export function RequirePerm({
   children: ReactNode;
 }) {
   const { state, hasPermission } = useAuth();
-  if (state.status === "loading") return null;
+  if (state.status === "loading") return <AuthLoading />;
   if (state.status === "anon" || !hasPermission(perm)) {
     return (
       <div className="mx-auto mt-16 max-w-md text-center text-stone-700">

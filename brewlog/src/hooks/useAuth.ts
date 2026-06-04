@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { api } from "@/lib/api";
 
@@ -17,32 +17,78 @@ type State =
   | { status: "anon" }
   | { status: "auth"; user: CurrentUser };
 
-export function useAuth() {
-  const [state, setState] = useState<State>({ status: "loading" });
+const initialState: State = { status: "loading" };
+let authState: State = initialState;
+let refreshPromise: Promise<void> | null = null;
+let listenersAttached = false;
+const listeners = new Set<() => void>();
 
-  const refresh = useCallback(async () => {
+function emit() {
+  for (const listener of listeners) listener();
+}
+
+function setAuthState(next: State) {
+  authState = next;
+  emit();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot() {
+  return authState;
+}
+
+function refreshAuth() {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
     try {
       const user = await api<CurrentUser>("/api/v1/auth/me");
-      setState({ status: "auth", user });
+      setAuthState({ status: "auth", user });
     } catch {
-      setState({ status: "anon" });
+      setAuthState({ status: "anon" });
+    } finally {
+      refreshPromise = null;
     }
+  })();
+
+  return refreshPromise;
+}
+
+function ensureAuthLoaded() {
+  if (authState.status !== "loading") return Promise.resolve();
+  return refreshAuth();
+}
+
+function attachAuthEvents() {
+  if (listenersAttached || typeof window === "undefined") return;
+  listenersAttached = true;
+
+  window.addEventListener("brewlog:session-expired", () => {
+    setAuthState({ status: "anon" });
+  });
+  window.addEventListener("brewlog:auth-changed", () => {
+    void refreshAuth();
+  });
+}
+
+export function __resetAuthForTests() {
+  authState = initialState;
+  refreshPromise = null;
+  emit();
+}
+
+export function useAuth() {
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const refresh = useCallback(() => refreshAuth(), []);
+
+  useEffect(() => {
+    attachAuthEvents();
+    void ensureAuthLoaded();
   }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    const expire = () => setState({ status: "anon" });
-    const changed = () => refresh();
-    window.addEventListener("brewlog:session-expired", expire);
-    window.addEventListener("brewlog:auth-changed", changed);
-    return () => {
-      window.removeEventListener("brewlog:session-expired", expire);
-      window.removeEventListener("brewlog:auth-changed", changed);
-    };
-  }, [refresh]);
 
   const login = useCallback(
     async (email: string, password: string): Promise<LoginResult> => {
@@ -51,11 +97,11 @@ export function useAuth() {
         body: JSON.stringify({ email, password }),
       });
       if ("mfa_required" in result) return { mfaRequired: true, devMagicLink: result.dev_magic_link };
-      await refresh();
+      setAuthState({ status: "auth", user: result });
       window.dispatchEvent(new CustomEvent("brewlog:auth-changed"));
       return { mfaRequired: false };
     },
-    [refresh],
+    [],
   );
 
   const verifyMfaLogin = useCallback(
@@ -90,7 +136,7 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     await api("/api/v1/auth/logout", { method: "POST" });
-    setState({ status: "anon" });
+    setAuthState({ status: "anon" });
     window.dispatchEvent(new CustomEvent("brewlog:auth-changed"));
   }, []);
 

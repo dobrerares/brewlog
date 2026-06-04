@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Navbar } from '@/app/components/Navbar'
+import { AuthLoading } from '@/components/AuthLoading'
 import { useAuth } from '@/hooks/useAuth'
 
 type SetupResponse = {
@@ -15,7 +16,7 @@ type VerifyResponse = {
 }
 
 export default function AccountSecurity() {
-  const { user, refresh } = useAuth()
+  const { state, user, refresh } = useAuth()
   const [setup, setSetup] = useState<SetupResponse | null>(null)
   const [code, setCode] = useState('')
   const [backupCodes, setBackupCodes] = useState<string[]>([])
@@ -56,6 +57,9 @@ export default function AccountSecurity() {
           <h1>Account security</h1>
         </div>
 
+        {state.status === 'loading' && <AuthLoading />}
+
+        {state.status !== 'loading' && (
         <section className="space-y-5">
           {user?.mfa_enabled ? (
             <div className="rounded-lg border p-4" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
@@ -118,6 +122,7 @@ export default function AccountSecurity() {
             </div>
           )}
         </section>
+        )}
       </main>
     </>
   )
