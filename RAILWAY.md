@@ -33,13 +33,13 @@ Use `AUTH_COOKIE_SAMESITE=lax` instead if the frontend and API are served from t
 
 ## Frontend variables
 
-Set this on the frontend service before it builds:
+Set this on the frontend service:
 
 ```text
-VITE_API_BASE=https://<backend-domain>
+BACKEND_URL=https://<backend-domain>
 ```
 
-Leave `VITE_API_BASE` unset only when the frontend and API are served behind the same origin reverse proxy.
+Leave `VITE_API_BASE` unset. The frontend nginx container proxies `/api`, `/graphql`, and `/ws` to `BACKEND_URL` at runtime.
 
 ## Notes
 
