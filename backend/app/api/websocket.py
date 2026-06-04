@@ -13,6 +13,7 @@ from app.db.base import session_factory
 from app.db.mongo import get_db as get_mongo_db
 from app.repositories.chat import ChatRepository
 from app.repositories.users import UserRepository
+from app.services import get_state
 from app.services.audit import write_audit
 from app.services.broadcast import broadcaster
 from app.services.chat import ChatService
@@ -42,7 +43,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str | None = Cook
             await websocket.close(code=4401)
             return
 
-    await websocket.accept()
+    state = get_state()
+    await state.broadcaster.connect(websocket)
     await websocket.send_json({"type": "ready", "user_id": str(user.id)})
 
     chat = ChatService(ChatRepository(get_mongo_db()), broadcaster)
@@ -100,4 +102,5 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str | None = Cook
     except WebSocketDisconnect:
         pass
     finally:
+        await state.broadcaster.disconnect(websocket)
         await broadcaster.unsubscribe_all(websocket)
